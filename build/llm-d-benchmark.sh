@@ -15,8 +15,10 @@ else
   fi
 fi
 
-export LLMDBENCH_HARNESS_GIT_REPO=$(cat /workspace/repos.txt | grep ^${LLMDBENCH_HARNESS_NAME}: | cut -d ":" -f 2,3 | cut -d ' ' -f 2 | tr -d ' ')
-export LLMDBENCH_HARNESS_GIT_BRANCH=$(cat /workspace/repos.txt | grep ^${LLMDBENCH_HARNESS_NAME}: | cut -d " " -f 3 | tr -d ' ')
+: ${LLMDBENCH_HARNESS_GIT_REPO:=$(cat /workspace/repos.txt | grep ^${LLMDBENCH_HARNESS_NAME}: | cut -d ":" -f 2,3 | cut -d ' ' -f 2 | tr -d ' ')}
+export LLMDBENCH_HARNESS_GIT_REPO
+: ${LLMDBENCH_HARNESS_GIT_BRANCH:=$(cat /workspace/repos.txt | grep ^${LLMDBENCH_HARNESS_NAME}: | cut -d " " -f 3 | tr -d ' ')}
+export LLMDBENCH_HARNESS_GIT_BRANCH
 
 export LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME=$(echo $LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME".yaml" | sed "s^.yaml.yaml^.yaml^g")
 export LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR=$(echo $LLMDBENCH_RUN_EXPERIMENT_HARNESS | sed "s^-llm-d-benchmark^^g" | cut -d '.' -f 1)
@@ -30,42 +32,52 @@ if [[ -f ~/.bashrc ]]; then
   mv -f ~/.bashrc ~/fixbashrc
 fi
 
-#if [[ -d $LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR && ! -z $LLMDBENCH_HARNESS_GIT_REPO ]]; then
-#  pushd /workspace/$LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR
-#  current_repo=$(git remote -v | grep \(fetch\) | awk '{ print $2 }')
-#  if [[ $current_repo == $LLMDBENCH_HARNESS_GIT_REPO ]]; then
-#    export LLMDBENCH_RUN_EXPERIMENT_HARNESS_CURRENT_COMMIT=$(git rev-parse --short HEAD)
-#    git fetch
-#  else
-#    popd
-#    rm -rf /workspace/$LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR
-#    git clone $LLMDBENCH_HARNESS_GIT_REPO
-#    pushd /workspace/$LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR
-#  fi
-#  git checkout $LLMDBENCH_HARNESS_GIT_BRANCH
-#  if [[ $(git rev-parse --short HEAD) != ${LLMDBENCH_RUN_EXPERIMENT_HARNESS_CURRENT_COMMIT} ]]; then
-#    case ${LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR} in
-#      fmperf*)
-#        pip install --no-cache-dir -r requirements.txt && pip install  .
-#        ;;
-#      inference-perf*)
-#        pip install  .
-#        ;;
-#      vllm-benchmark*)
-#        VLLM_USE_PRECOMPILED=1 pip install  .
-#        pushd ..
-#        if [[ ! -d vllm ]]; then
-#          mv -f vllm vllm-benchmark
-#        fi
-#        popd
-#        ;;
-#      guidellm*)
-#        pip install  .
-#        ;;
-#    esac
-#  fi
-#  popd
-#fi
+if [[ -d $LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR && ! -z $LLMDBENCH_HARNESS_GIT_REPO ]]; then
+  pushd /workspace/$LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR
+else
+  echo failed to find harness $LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR and/or repo $LLMDBENCH_HARNESS_GIT_REPO
+  exit 1
+fi
+
+current_repo=git config --default MISSING --get remote.original.url
+if [[ $current_repo != $LLMDBENCH_HARNESS_GIT_REPO ]]; then
+   popd
+   rm -rf /workspace/$LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR
+   git clone $LLMDBENCH_HARNESS_GIT_REPO
+   pushd /workspace/$LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR
+fi
+
+current_commit=$(git rev-parse --short HEAD)
+desired_commit=$(git rev-parse -q --short origin/$LLMDBENCH_HARNESS_GIT_BRANCH)
+
+if [[ $current_head != $desired_commit]]; then
+  git checkout -q $desired_commit
+fi
+export LLMDBENCH_RUN_EXPERIMENT_HARNESS_CURRENT_COMMIT=$(git rev-parse --short HEAD)
+
+case ${LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR} in
+  fmperf*)
+    pip install --no-cache-dir -r requirements.txt && pip install  .
+    ;;
+  inference-perf*)
+    pip install  .
+    ;;
+  vllm-benchmark*)
+    VLLM_USE_PRECOMPILED=1 pip install  .
+    pushd ..
+    if [[ ! -d vllm ]]; then
+      mv -f vllm vllm-benchmark
+    fi
+    popd
+    ;;
+  guidellm*)
+    pip install  .
+    ;;
+esac
+fi
+popd
+fi
+
 
 env | grep ^LLMDBENCH | grep -v BASE64 | sort
 
