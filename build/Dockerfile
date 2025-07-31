@@ -1,5 +1,8 @@
 FROM python:3.12.9-slim-bookworm
 
+# install kubectl
+COPY --from=docker.io/bitnami/kubectl:latest /opt/bitnami/kubectl/bin/kubectl /usr/local/bin/
+
 RUN apt-get update; \
     apt-get install -y \
     git \
