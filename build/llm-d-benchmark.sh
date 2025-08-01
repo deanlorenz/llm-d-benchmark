@@ -54,28 +54,28 @@ desired_commit=$(git rev-parse -q --short origin/$LLMDBENCH_HARNESS_GIT_BRANCH)
 
 if [[ $current_head != $desired_commit ]]; then
   git checkout -q $desired_commit
+
+  case ${LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR} in
+    fmperf*)
+      pip install --no-cache-dir -r requirements.txt && pip install  .
+      ;;
+    inference-perf*)
+      pip install  .
+      ;;
+    vllm-benchmark*)
+      VLLM_USE_PRECOMPILED=1 pip install  .
+      pushd ..
+      if [[ ! -d vllm ]]; then
+        mv -f vllm vllm-benchmark
+      fi
+      popd
+      ;;
+    guidellm*)
+      pip install  .
+      ;;
+  esac
 fi
 export LLMDBENCH_RUN_EXPERIMENT_HARNESS_CURRENT_COMMIT=$(git rev-parse --short HEAD)
-
-case ${LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR} in
-  fmperf*)
-    pip install --no-cache-dir -r requirements.txt && pip install  .
-    ;;
-  inference-perf*)
-    pip install  .
-    ;;
-  vllm-benchmark*)
-    VLLM_USE_PRECOMPILED=1 pip install  .
-    pushd ..
-    if [[ ! -d vllm ]]; then
-      mv -f vllm vllm-benchmark
-    fi
-    popd
-    ;;
-  guidellm*)
-    pip install  .
-    ;;
-esac
 popd
 
 env | grep ^LLMDBENCH | grep -v BASE64 | sort
