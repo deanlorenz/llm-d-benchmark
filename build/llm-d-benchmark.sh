@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 export LLMDBENCH_RUN_EXPERIMENT_HARNESS_EC=1
- if [[ ! -z $1 ]]; then
+if [[ ! -z $1 ]]; then
   export LLMDBENCH_HARNESS_NAME=${1}
   export LLMDBENCH_RUN_EXPERIMENT_HARNESS=$(find /usr/local/bin | grep ${1}.*-llm-d-benchmark | rev | cut -d '/' -f 1 | rev)
   export LLMDBENCH_RUN_EXPERIMENT_ANALYZER=$(find /usr/local/bin | grep ${1}.*-analyze_results | rev | cut -d '/' -f 1 | rev)
@@ -32,25 +32,27 @@ if [[ -f ~/.bashrc ]]; then
   mv -f ~/.bashrc ~/fixbashrc
 fi
 
-if [[ -d $LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR && ! -z $LLMDBENCH_HARNESS_GIT_REPO ]]; then
+if [[ -d $LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR ]]; then
   pushd /workspace/$LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR
 else
-  echo failed to find harness $LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR and/or repo $LLMDBENCH_HARNESS_GIT_REPO
-  exit 1
+  echo failed to find harness $LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR
+  exit 0
 fi
 
-current_repo=git config --default MISSING --get remote.original.url
-if [[ $current_repo != $LLMDBENCH_HARNESS_GIT_REPO ]]; then
-   popd
-   rm -rf /workspace/$LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR
-   git clone $LLMDBENCH_HARNESS_GIT_REPO
-   pushd /workspace/$LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR
+if [[ ! -z $LLMDBENCH_HARNESS_GIT_REPO ]]; then 
+  current_repo=$(git config --default MISSING --get remote.original.url)
+  if [[ $current_repo != $LLMDBENCH_HARNESS_GIT_REPO ]]; then
+    popd
+    rm -rf /workspace/$LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR
+    git clone $LLMDBENCH_HARNESS_GIT_REPO
+    pushd /workspace/$LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR
+  fi
 fi
 
 current_commit=$(git rev-parse --short HEAD)
 desired_commit=$(git rev-parse -q --short origin/$LLMDBENCH_HARNESS_GIT_BRANCH)
 
-if [[ $current_head != $desired_commit]]; then
+if [[ $current_head != $desired_commit ]]; then
   git checkout -q $desired_commit
 fi
 export LLMDBENCH_RUN_EXPERIMENT_HARNESS_CURRENT_COMMIT=$(git rev-parse --short HEAD)
@@ -74,10 +76,7 @@ case ${LLMDBENCH_RUN_EXPERIMENT_HARNESS_DIR} in
     pip install  .
     ;;
 esac
-fi
 popd
-fi
-
 
 env | grep ^LLMDBENCH | grep -v BASE64 | sort
 
@@ -86,7 +85,7 @@ if [[ $LLMDBENCH_RUN_EXPERIMENT_HARNESS_EC -ne 0 ]]; then
   ec=$?
   if [[ $ec -ne 0 ]]; then
     echo "execution of /usr/local/bin/${LLMDBENCH_RUN_EXPERIMENT_HARNESS} failed, wating 120 seconds and trying again"
-    sleep 120
+    sleep 30
     set -x
   else
     export LLMDBENCH_RUN_EXPERIMENT_HARNESS_EC=0
@@ -101,7 +100,7 @@ fi
 ec=$?
 if [[ $ec -ne 0 ]]; then
   echo "execution of /usr/local/bin/${LLMDBENCH_RUN_EXPERIMENT_ANALYZER} failed, wating 120 seconds and trying again"
-  sleep 120
+  sleep 30
   set -x
 fi
 exit $ec
