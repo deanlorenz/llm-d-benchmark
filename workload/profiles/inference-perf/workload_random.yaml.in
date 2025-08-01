@@ -1,0 +1,49 @@
+oad:
+  type: constant
+  stages:
+  - rate: 2
+    duration: 50
+  - rate: 5
+    duration: 50
+  - rate: 8
+    duration: 50
+  - rate: 10
+    duration: 50
+  - rate: 12
+    duration: 50
+  - rate: 15
+    duration: 50
+  - rate: 20
+    duration: 50
+api:
+  type: completion
+  streaming: true
+server:
+  type: vllm
+  model_name: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
+  base_url: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
+  ignore_eos: true
+tokenizer:
+  pretrained_model_name_or_path: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_TOKENIZER
+data:
+  type: random
+  input_distribution:
+    min: 10
+    max: 4096
+    mean: 2048
+    std: 1024
+    total_count: 1000
+  output_distribution:
+    min: 10
+    max: 512
+    mean: 256
+    std: 128
+    total_count: 1000
+report:
+  request_lifecycle:
+    summary: true
+    per_stage: true
+    per_request: true
+storage:
+  local_storage:
+    path: /requests
