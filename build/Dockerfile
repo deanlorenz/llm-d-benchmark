@@ -35,9 +35,9 @@ WORKDIR /workspace
 # Required by our fmperf benchmark harness
 RUN pip install kubernetes_asyncio
 
-ARG FM_PERF_REPO=https://github.com/fmperf-project/fmperf.git
-ARG FM_PERF_BRANCH=main
-ARG FM_PERF_COMMIT=0b1f63acdafcc815847a22332c0e478cc41ebed2
+ARG FM_PERF_REPO=https://github.com/dmitripikus/fmperf.git
+ARG FM_PERF_BRANCH=dev-lmbenchmark
+ARG FM_PERF_COMMIT=9ee934c099767af2934ecf76f0ced2a19cab7f61
 RUN git clone --branch ${FM_PERF_BRANCH} ${FM_PERF_REPO}
 RUN cd fmperf; \
     git checkout ${FM_PERF_COMMIT}; \
