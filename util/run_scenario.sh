@@ -85,7 +85,8 @@ read -t 30 -p "Press enter to continue or Ctrl-C to cancel"
 echo applying epp config from ./experiments/${epp}.yaml
 yq -C . <./experiments/${epp}.yaml
 read -t 30 -p "Press enter to continue or Ctrl-C to cancel"
-kubectl create configmap epp-config --from-file=./experiments/${epp}.yaml --dry-run=client -o yaml | kubectl apply -f -
+# apply
+kubectl create configmap epp-config --from-file=epp-config.yaml=./experiments/${epp}.yaml --dry-run=client -o yaml | kubectl apply -f -
 
 echo Starting logging into $LLMDBENCH_CONTROL_WORK_DIR
 trap 'kill -9 $(jobs -p)' EXIT TERM INT
