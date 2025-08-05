@@ -75,7 +75,8 @@ source <(sed '/^export/!d' ${config_file})
 echo running workload $workload with epp $epp
 
 : {LLMDBENCH_CONTROL_WORK_DIR:=/tmp}
-export LLMDBENCH_CONTROL_WORK_DIR=${LLMDBENCH_CONTROL_WORK_DIR}/${workload}-${epp}-$(date +%s)
+id=$(date +%s)
+export LLMDBENCH_CONTROL_WORK_DIR=${LLMDBENCH_CONTROL_WORK_DIR}/${workload}-${epp}-${id}
 mkdir -p -v $LLMDBENCH_CONTROL_WORK_DIR
 
 echo applying workload from ./workload/profiles/inference-perf/${workload}.yaml.in
@@ -85,8 +86,11 @@ read -t 30 -p "Press enter to continue or Ctrl-C to cancel"
 echo applying epp config from ./experiments/${epp}.yaml
 yq -C . <./experiments/${epp}.yaml
 read -t 30 -p "Press enter to continue or Ctrl-C to cancel"
-# apply
-kubectl create configmap epp-config --from-file=epp-config.yaml=./experiments/${epp}.yaml --dry-run=client -o yaml | kubectl apply -f -
+# apply and restart
+kubectl create configmap epp-config --from-file=epp-config.yaml=./experiments/${epp}.yaml --dry-run=client -o yaml | 
+	yq '.metadata.annotations.id="'$id'"' |
+	kubectl apply -f -
+kubectl delete pod -l app=endpoint-picker
 
 echo Starting logging into $LLMDBENCH_CONTROL_WORK_DIR
 trap 'kill -9 $(jobs -p)' EXIT TERM INT
@@ -114,4 +118,13 @@ EOF
 
 read -t 30 -p "Run finished. Press enter to kill log capture"
 kill -9 $(jobs -p)
+
+echo "========================================================================="
+echo actual epp config at end of experiment
+oc get cm epp-config -o yaml | yq '.data["epp-config.yaml"]' | yq -C .
+read -t 30 -p "Press enter to continue"
+
+oc get cm inference-perf-profiles -o=jsonpath='{.data}' | jq '.["'$workload.yaml'"]' | yq -C .
+read -t 30 -p "Press enter to continue"
+
 popd

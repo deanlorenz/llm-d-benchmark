@@ -21,7 +21,7 @@ fi
 if [[ $# -gt 0 ]]; then
   delay="${1}"
 fi
-: ${delay:=60}
+: ${delay:=120}
 
 # Delayed start to allow run to setup epp and create the launcher
 since_vllm=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
