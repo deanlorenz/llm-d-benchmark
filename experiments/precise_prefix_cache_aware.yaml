@@ -9,12 +9,10 @@ setup:
     - "prefix-cache-tracking-config"
 run:
   factors:
-    - num_groups
-    - system_prompt_len
+    - LLMDBENCH_HARNESS_EXPERIMENT_PROFILE
   levels:
-    num_groups: "40,60"
-    system_prompt_len: "80000,5000,1000"
+    LLMDBENCH_HARNESS_EXPERIMENT_PROFILE: "shared_prefix_synthetic,sanity_random,chatbot_sharegpt"
   treatments:
-    - "40,8000"
-    - "60,5000"
-    - "60,1000"
+    - "shared_prefix_synthetic"
+    - "sanity_random"
+    - "chatbot_sharegpt"
