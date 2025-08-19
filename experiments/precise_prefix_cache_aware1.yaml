@@ -1,0 +1,19 @@
+setup:
+  factors:
+    - LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS
+  levels:
+    LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS: "epp_baseline.yaml,epp_cache_tracking.yaml,epp_estimate.yaml,epp_load.yaml"
+  treatments:
+    - "epp_baseline.yaml"
+    - "epp_cache_tracking.yaml" 
+    - "epp_estimate.yaml"
+    - "epp_load.yaml"
+run:
+  factors:
+    - LLMDBENCH_HARNESS_EXPERIMENT_PROFILE
+  levels:
+    LLMDBENCH_HARNESS_EXPERIMENT_PROFILE: "shared_prefix_synthetic,sanity_random,chatbot_sharegpt"
+  treatments:
+    - "shared_prefix_synthetic"
+    - "sanity_random"
+    - "chatbot_sharegpt"

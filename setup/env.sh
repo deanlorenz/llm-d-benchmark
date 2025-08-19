@@ -456,3 +456,15 @@ done
 export HF_TOKEN=${HF_TOKEN:-$LLMDBENCH_HF_TOKEN}
 
 export LLMDBENCH_CONTROL_DEPLOY_HOST_SHELL=${SHELL:5}
+
+#set -x
+#trap '{
+#set +x
+#printf "\e[A\e[K"
+#echo -e "\n============================================================="
+#echo -e "\033[32m${BASH_SOURCE}:${LINENO}\033[0m ${BASH_COMMAND}"
+#echo -n "_____________________________________________________________"
+#while read -n 1 -p "> " -t 2 p && [ xp == x${p} ]; do sleep 10; done
+#echo
+#set -x
+#}' DEBUG
