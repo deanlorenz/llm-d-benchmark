@@ -110,6 +110,7 @@ or, if using `kubectl`
 ```bash
 kubectl config set-context --current --namespace=<_namespace-name_>
 ```
+Also consider [kubectx](https://github.com/ahmetb/kubectx).
 
 ### 3. Gather required parameters (mostly information about your `llm-d` stack)
 
@@ -131,8 +132,8 @@ kubectl config set-context --current --namespace=<_namespace-name_>
   </details>
 
 
-* **Hugging-Face Token [Optional]**: 
-  If none is specified then the `HF_TOKEN` used in the existing `llm-d` stack will be used.
+* **Hugging-Face Token [Optional]**: (will become optional)
+  If no `HF_TOKEN` then the existing `llm-d` stack can be used.
   <details>
   <summary><b><code>Click to view</code></b> bash code snippet</summary>
 
@@ -141,8 +142,7 @@ kubectl config set-context --current --namespace=<_namespace-name_>
   ```
   </details>
 
-<!--
-* **Namespace**:
+* **Namespace**: (will become optional)
   The K8S namespace / RHOS project being use.
   <details>
   <summary><b><code>Click to view</code></b> bash code snippet</summary>
@@ -150,11 +150,10 @@ kubectl config set-context --current --namespace=<_namespace-name_>
   ```bash
   oc config current-context | awk -F / '{print $1}'
   ```
+  
   </details>
--->
 
-<!--
-* **Model**: 
+* **Model**: (will become optional)
   The exact model name of the LLM being served by your `llm-d` stack. 
 
   <details>
@@ -168,7 +167,6 @@ kubectl config set-context --current --namespace=<_namespace-name_>
   curl -s http://<HOST>:<PORT>/v1/models | jq '.data[].root'`
   ```
   </details>
--->
 
 ### 4. Create Environment Configuration File
 Prepare a file `./myenv.sh` with the following content: (file name must have a `.sh` suffix)

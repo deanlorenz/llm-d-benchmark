@@ -101,6 +101,12 @@ routing:
 decode:
   create: $(echo $LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS | $LLMDBENCH_CONTROL_SCMD -e 's/^0/false/' -e 's/[1-9].*/true/')
   replicas: ${LLMDBENCH_VLLM_MODELSERVICE_DECODE_REPLICAS}
+  monitoring:
+    podmonitor:
+      enabled: true
+      portName: "metrics" # decode vLLM service port (from routing.proxy.targetPort)
+      path: "/metrics"
+      interval: "30s"
   acceleratorTypes:
       labelKey: $(echo $LLMDBENCH_VLLM_COMMON_AFFINITY | cut -d ':' -f 1)
       labelValues:
@@ -173,6 +179,12 @@ decode:
 prefill:
   create: $(echo $LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS | $LLMDBENCH_CONTROL_SCMD -e 's/^0/false/' -e 's/[1-9].*/true/')
   replicas: ${LLMDBENCH_VLLM_MODELSERVICE_PREFILL_REPLICAS}
+  monitoring:
+    podmonitor:
+      enabled: true
+      portName: "metrics" # decode vLLM service port (from routing.proxy.targetPort)
+      path: "/metrics"
+      interval: "30s"
   acceleratorTypes:
       labelKey: $(echo $LLMDBENCH_VLLM_COMMON_AFFINITY | cut -d ':' -f 1)
       labelValues:
