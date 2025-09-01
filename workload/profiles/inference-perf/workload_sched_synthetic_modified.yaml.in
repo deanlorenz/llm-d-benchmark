@@ -1,0 +1,45 @@
+load:
+  type: poisson
+  stages:
+  - rate: 10
+    duration: 50
+  - rate: 15
+    duration: 50
+  - rate: 20
+    duration: 50
+  - rate: 22
+    duration: 50
+  - rate: 25
+    duration: 50
+  - rate: 30
+    duration: 50
+api:
+  type: completion
+  streaming: true
+server:
+  type: vllm
+  model_name: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
+  base_url: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
+  ignore_eos: true
+tokenizer:
+  pretrained_model_name_or_path: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_TOKENIZER
+data:
+  type: synthetic
+  input_distribution:
+    min: 1000             # min length of the synthetic prompts
+    max: 3000            # max length of the synthetic prompts
+    mean: 2000            # mean length of the synthetic prompts
+    std: 200             # standard deviation of the length of the synthetic prompts
+  output_distribution:
+    min: 500             # min length of the output to be generated
+    max: 1500            # max length of the output to be generated
+    mean: 1000            # mean length of the output to be generated
+    std: 100             # standard deviation of the length of the output to be generated
+report:
+  request_lifecycle:
+    summary: true
+    per_stage: true
+    per_request: true
+storage:
+  local_storage:
+    path: /workspace

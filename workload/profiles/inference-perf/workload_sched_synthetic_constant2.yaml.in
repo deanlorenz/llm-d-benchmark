@@ -1,0 +1,47 @@
+load:
+  type: constant
+  stages:
+  - rate: 2
+    duration: 50
+  - rate: 5
+    duration: 50
+  - rate: 8
+    duration: 50
+  - rate: 10
+    duration: 50
+  - rate: 12
+    duration: 50
+  - rate: 15
+    duration: 50
+  - rate: 20
+    duration: 50
+api:
+  type: completion
+  streaming: true
+server:
+  type: vllm
+  model_name: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
+  base_url: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
+  ignore_eos: true
+tokenizer:
+  pretrained_model_name_or_path: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_TOKENIZER
+data:
+  type: synthetic
+  input_distribution:
+    min: 6020             # min length of the synthetic prompts
+    max: 6020            # max length of the synthetic prompts
+    mean: 6020            # mean length of the synthetic prompts
+    std: 0             # standard deviation of the length of the synthetic prompts
+  output_distribution:
+    min: 200             # min length of the output to be generated
+    max: 200            # max length of the output to be generated
+    mean: 200            # mean length of the output to be generated
+    std: 0             # standard deviation of the length of the output to be generated
+report:
+  request_lifecycle:
+    summary: true
+    per_stage: true
+    per_request: true
+storage:
+  local_storage:
+    path: /workspace

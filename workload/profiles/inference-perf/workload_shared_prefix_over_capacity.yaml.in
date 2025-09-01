@@ -1,0 +1,59 @@
+# EXPERIMENT B‑STRESS — Over‑capacity (50k tokens/pod)
+# Intention: mild–moderate overfill that still lets 24 rps complete on your scheduler.
+#
+# KV math (short prompts):
+#   KV_cap_per_pod = 50,000
+#   L_shared = 3,000; L_question = 500; Output_len = 256 ⇒ L_live_out ≈ 128
+#   Target concurrency C ≈ 12/pod
+#   Ephemeral/pod = 12 * 628 = 7,536
+#   Remaining/pod = 50,000 − 7,536 = 42,464
+#   Slots/pod = floor(42,464 / 3,000) = 14  ⇒ cluster slots ≈ 56
+# Overfill plan:
+#   ► num_groups: 80  (~20/pod vs 14 slots/pod) = ~43% overfill → visible pressure without instant meltdown.
+load:
+  type: constant
+  stages:
+    - rate: 3
+      duration: 60
+    - rate: 8
+      duration: 75
+    - rate: 12
+      duration: 75
+    - rate: 16
+      duration: 90
+    - rate: 21
+      duration: 105
+    - rate: 24
+      duration: 120
+
+api:
+  type: completion
+  streaming: true
+
+server:
+  type: vllm
+  model_name: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
+  base_url: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
+  ignore_eos: true
+
+tokenizer:
+  pretrained_model_name_or_path: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_TOKENIZER
+
+data:
+  type: shared_prefix
+  shared_prefix:
+    num_groups: 80
+    num_prompts_per_group: 3
+    system_prompt_len: 3000
+    question_len: 500
+    output_len: 256
+
+report:
+  request_lifecycle:
+    summary: true
+    per_stage: true
+    per_request: true
+
+storage:
+  local_storage:
+    path: /workspace
