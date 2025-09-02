@@ -157,14 +157,18 @@ Also consider [kubectx](https://github.com/ahmetb/kubectx).
   The exact model name of the LLM being served by your `llm-d` stack. 
 
   <details>
-  <summary><b><code>Click to viewi</code></b> bash code snippet</summary>
+  <summary><b><code>Click to view</code></b> bash code snippet</summary>
 
   ```bash
-  get oc get routes -l app.kubernetes.io/name=inference-gateway
-
-  # note the HOST and PORT from the above command 
-
-  curl -s http://<HOST>:<PORT>/v1/models | jq '.data[].root'`
+  # find the inference gateway endpoint
+  endpoint=$(
+    oc get route -o custom-columns='NAME:{.metadata.name},HOST:{.spec.host},PORT:{.spec.port.targetPort}' |
+    awk '$1 ~ /inference-gateway/ {gsub(":default$", ":80", $2); print "http://" $2; exit}'
+  )
+  
+  # get model name
+  modelname="$(curl -s ${endpoint}/v1/models | jq -r '.data[].id')"
+  echo ${modelname}
   ```
   </details>
 
@@ -175,6 +179,9 @@ Prepare a file `./myenv.sh` with the following content: (file name must have a `
 export LLMDBENCH_DEPLOY_METHODS="infra-inference-scheduling-inference-gateway"
 export LLMDBENCH_HARNESS_NAME="inference-perf"
 # export LLMDBENCH_HF_TOKEN=<_your Hugging Face token_>
+
+# Model name
+export LLMDBENCH_DEPLOY_MODEL_LIST=<_your full model name_>
 
 # Work Directory; for example "/tmp/<_namespace_>"
 export LLMDBENCH_CONTROL_WORK_DIR="<_name of your local Work Direcotry_>"
@@ -194,9 +201,9 @@ export LLMDBENCH_HARNESS_WAIT_TIMEOUT=3600
 
 ```bash
 run.sh \
-  -c "$(realpath ./myenv.sh)"  `# use full path` \
-  -w "shared_prefix_synthetic" `# <name of the Harness Profile>.yaml.in` \
-  # -s 10000  # uncomment to setup timeout on command line. 
+  -c "$(realpath ./myenv.sh)"   `# use full path` \
+  -w "shared_prefix_synthetic"  `# <name of the Harness Profile>.yaml.in` \
+  # -s 10000                     # uncomment to setup timeout on command line. 
   
 ```
 
