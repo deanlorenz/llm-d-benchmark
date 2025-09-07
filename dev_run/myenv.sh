@@ -30,9 +30,10 @@ export LLMDBENCH_VLLM_HARNESS_NAMESPACE=${LLMD_NAMESPACE}
 # ===========
 export TMPDIR=/tmp
 base_dir="$(cd $(dirname ${BASH_SOURCE[0]}) && pwd)"  # Use script dir
-export LLMDBENCH_HARNESS_DIR=${LLMDBENCH_HARNESS_DIR:-$TMPDIR}
+export LLMDBENCH_HARNESS_DIR="${LLMDBENCH_HARNESS_DIR:-$TMPDIR}"
 # This is the benchmark work directory:
-export LLMDBENCH_CONTROL_WORK_DIR=${LLMDBENCH_CONTROL_WORK_DIR:-${base_dir}/${LLMD_NAMESPACE}}
+export LLMDBENCH_CONTROL_WORK_DIR="${LLMDBENCH_CONTROL_WORK_DIR:-${base_dir}/${LLMD_NAMESPACE}}"
+export LLMDBENCH_INFRA_DIR="${LLMDBENCH_INFRA_DIR:-$TMPDIR}"
 
 # STORAGE
 # =======
@@ -44,10 +45,24 @@ if [[ ! -v LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS ]]; then
 fi
 # Persistent Volume Claim where benchmark results will be stored 
 # (if omitted will attempt to create PVC named "workload-pvc" using the storage class)
-export LLMDBENCH_HARNESS_PVC_NAME="<_name of your Harness PVC_>"  # Optional
+#export LLMDBENCH_HARNESS_PVC_NAME="<_name of your Harness PVC_>"  # Optional
+if [ -z "$LLMDBENCH_HARNESS_PVC_NAME" ]; then
+  echo "Missing harness PVC name. Please change $(grep -Hn '#export LLMDBENCH_HARNESS_PVC_NAME=' ${BASH_SOURCE[0]})"
+  oc get pvc 
+  read -p "Enter harness PVC name:" LLMDBENCH_HARNESS_PVC_NAME
+#  export LLMDBENCH_HARNESS_PVC_NAME
+fi
+
 # Persistent Volume Claim where model is downloaded
 # (if omitted will attempt to create PVC named "model-pvc" using the storage class)
-export LLMDBENCH_VLLM_COMMON_PVC_NAME="<_name of your model PVC_>"  # Optional
+#export LLMDBENCH_VLLM_COMMON_PVC_NAME="<_name of your model PVC_>"  # Optional
+if [ -z "$LLMDBENCH_VLLM_COMMON_PVC_NAME" ]; then
+  echo "Missing common PVC name. Please change $(grep -Hn '#export LLMDBENCH_VLLM_COMMON_PVC_NAME=' ${BASH_SOURCE[0]})"
+  oc get pvc 
+  read -p "Enter common PVC name:" LLMDBENCH_VLLM_COMMON_PVC_NAME
+#  export LLMDBENCH_VLLM_COMMON_PVC_NAME
+fi
+
 
 # HARNESS
 # =======
