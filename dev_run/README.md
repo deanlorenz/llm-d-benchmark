@@ -176,7 +176,7 @@ Also consider [kubectx](https://github.com/ahmetb/kubectx).
 Prepare a file `./myenv.sh` with the following content: (file name must have a `.sh` suffix)
 
 ```bash
-export LLMDBENCH_DEPLOY_METHODS="infra-inference-scheduling-inference-gateway"
+export LLMDBENCH_DEPLOY_METHODS="infra-inference-scheduling-inference-gateway"  # replace with endpoint name
 export LLMDBENCH_HARNESS_NAME="inference-perf"
 # export LLMDBENCH_HF_TOKEN=<_your Hugging Face token_>
 

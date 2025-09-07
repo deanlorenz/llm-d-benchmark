@@ -41,8 +41,8 @@ function model_attribute {
   # model is of the form namespace/modelid:uniqueid
   local modelid=$(echo $model | cut -d: -f2)
   model=$(echo $model | cut -d: -f1)
-  local modelid_label="$(echo -n $modelid | cut -d '/' -f 1 | cut -c1-8)-$(echo -n $modelid | gsha256sum | awk '{print $1}' | cut -c1-8)-$(echo -n $modelid | cut -d '/' -f 2 | rev | cut -c1-8 | rev)"
-
+  local SHACMD=$(type -p gsha256sum || type -p sha256sum)
+  local modelid_label="$(echo -n $modelid | cut -d '/' -f 1 | cut -c1-8)-$(echo -n $modelid | $SHACMD | awk '{print $1}' | cut -c1-8)-$(echo -n $modelid | cut -d '/' -f 2 | rev | cut -c1-8 | rev)"
   local modelcomponents=$(echo $model | cut -d '/' -f 2 |  tr '[:upper:]' '[:lower:]' | $LLMDBENCH_CONTROL_SCMD -e 's^qwen^qwen-^g' -e 's^-^\n^g')
   local provider=$(echo $model | cut -d '/' -f 1)
   local type=$(echo "${modelcomponents}" | grep -Ei "nstruct|hf|chat|speech|vision")
