@@ -1,12 +1,19 @@
 # Main Namespace  !! make sure you are logged in to the cluster in the correct namespace/project
 # ==============
-export LLMD_NAMESPACE=$(oc config current-context | awk -F / '{print $1}')
+if [[ -z "${LLMDBENCH_VLLM_COMMON_NAMESPACE:-}"
+export LLMDBENCH_VLLM_COMMON_NAMESPACE=${LLMDBENCH_VLLM_HARNESS_NAMESPACE:-$(oc config current-context | awk -F / '{print $1}')}
+# derived NSs
+# ===========
+export LLMDBENCH_FMPERF_NAMESPACE=${LLMDBENCH_VLLM_COMMON_NAMESPACE}
+export LLMDBENCH_VLLM_HARNESS_NAMESPACE=${LLMDBENCH_VLLM_COMMON_NAMESPACE}
+echo "==> Using namespace $LLMDBENCH_VLLM_COMMON_NAMESPACE. Use -p to override."
 
 # HF TOKEN
 # ========
 export HF_TOKEN_NAME=llm-d-hf-token  # change this if your secret is under another name
 #export HF_TOKEN=<_your HuggingFace Token_>
 if [[ -z "${HF_TOKEN:-}" ]]; then
+  echo
   echo "HF_TOKEN not set."
   echo "Please modify $(grep -Hn '^#export HF_TOKEN=' ${BASH_SOURCE[0]})"
   echo "==> Fetching token from current namespace (secret $HF_TOKEN_NAME)."
@@ -26,13 +33,6 @@ export LLMDBENCH_IMAGE_REGISTRY=quay.io
 export LLMDBENCH_INFRA_GIT_REPO=https://github.com/deanlorenz/llm-d-infra.git
 export LLMDBENCH_INFRA_GIT_BRANCH=dev
 
-# derived NSs
-# ===========
-export LLMDBENCH_FMPERF_NAMESPACE=${LLMD_NAMESPACE}
-export LLMDBENCH_VLLM_COMMON_NAMESPACE=${LLMD_NAMESPACE}
-export LLMDBENCH_VLLM_HARNESS_NAMESPACE=${LLMD_NAMESPACE}
-echo "==> Using namespace $LLMDBENCH_VLLM_COMMON_NAMESPACE. Use -p to override."
-
 # DIRECTORIES
 # ===========
 export TMPDIR=/tmp
@@ -45,7 +45,7 @@ echo "==> Using work directory $LLMDBENCH_CONTROL_WORK_DIR"
 
 # STORAGE
 # =======
-if [[ -z ${LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS:-} ]]; then
+if [[ -z "${LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS:-}" ]]; then
 #  export LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=nfs-client-pokprod
 #  export LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=nfs-client-simplenfs
 #  export LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=ibm-spectrum-scale-fileset  # pokprod
@@ -55,24 +55,28 @@ fi
 # (if omitted will attempt to create PVC named "workload-pvc" using the storage class)
 #export LLMDBENCH_HARNESS_PVC_NAME="<_name of your Harness PVC_>"
 if [ -z "${LLMDBENCH_HARNESS_PVC_NAME:-}" ]; then
+  echo
   echo "Missing harness PVC name."
   echo "Please modify $(grep -Hn '^#export LLMDBENCH_HARNESS_PVC_NAME=' ${BASH_SOURCE[0]})"
   # echo "==> Will use/create 'workload-pvc'."
   oc get pvc 
   read -p "Enter harness PVC name (for benchmark results collection): " LLMDBENCH_HARNESS_PVC_NAME
   export LLMDBENCH_HARNESS_PVC_NAME
+  echo "export LLMDBENCH_HARNESS_PVC_NAME=$LLMDBENCH_HARNESS_PVC_NAME"
 fi
 
 # Persistent Volume Claim where model is downloaded
 # (if omitted will attempt to create PVC named "model-pvc" using the storage class)
 #export LLMDBENCH_VLLM_COMMON_PVC_NAME="<_name of your model PVC_>"
 if [ -z "${LLMDBENCH_VLLM_COMMON_PVC_NAME:-}" ]; then
+  echo
   echo "Missing common PVC name."
   echo "Please modify $(grep -Hn '^#export LLMDBENCH_VLLM_COMMON_PVC_NAME=' ${BASH_SOURCE[0]})"
   # echo "==> Will use 'model-pvc'."
   oc get pvc 
   read -p "Enter common PVC name (for cache and model): " LLMDBENCH_VLLM_COMMON_PVC_NAME
   export LLMDBENCH_VLLM_COMMON_PVC_NAME
+  echo "export LLMDBENCH_VLLM_COMMON_PVC_NAME=$LLMDBENCH_VLLM_COMMON_PVC_NAME"
 fi
 
 # HARNESS
