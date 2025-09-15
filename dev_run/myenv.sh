@@ -1,7 +1,8 @@
 # Main Namespace  !! make sure you are logged in to the cluster in the correct namespace/project
 # ==============
-if [[ -z "${LLMDBENCH_VLLM_COMMON_NAMESPACE:-}"
-export LLMDBENCH_VLLM_COMMON_NAMESPACE=${LLMDBENCH_VLLM_HARNESS_NAMESPACE:-$(oc config current-context | awk -F / '{print $1}')}
+if [[ -z "${LLMDBENCH_VLLM_COMMON_NAMESPACE:-}" ]]; then
+  export LLMDBENCH_VLLM_COMMON_NAMESPACE=${LLMDBENCH_VLLM_HARNESS_NAMESPACE:-$(oc config current-context | awk -F / '{print $1}')}
+fi
 # derived NSs
 # ===========
 export LLMDBENCH_FMPERF_NAMESPACE=${LLMDBENCH_VLLM_COMMON_NAMESPACE}
