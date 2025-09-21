@@ -112,6 +112,7 @@ kubectl config set-context --current --namespace=<_namespace-name_>
 ```
 Also consider [kubectx](https://github.com/ahmetb/kubectx).
 
+
 ### 3. Gather required parameters (mostly information about your `llm-d` stack)
 
 * **Work Directory**: 
@@ -120,7 +121,7 @@ Also consider [kubectx](https://github.com/ahmetb/kubectx).
 * **Harness Profile**: 
   The name of your `.yaml.in` file _without the suffix_, e.g., `shared_prefix_synthetic`
 
-* **PVC**: 
+* **PVC**: [Optional (`workload-pvc` will be created)]
   A Persistent Volume Claim for storing benchmarking results. Must be one of the available PVCs in the cluster.
 
   <details>
@@ -132,7 +133,7 @@ Also consider [kubectx](https://github.com/ahmetb/kubectx).
   </details>
 
 
-* **Hugging-Face Token [Optional]**: (will become optional)
+* **Hugging-Face Token** [Optional (copied from stack)]
   If no `HF_TOKEN` then the existing `llm-d` stack can be used.
   <details>
   <summary><b><code>Click to view</code></b> bash code snippet</summary>
@@ -142,7 +143,7 @@ Also consider [kubectx](https://github.com/ahmetb/kubectx).
   ```
   </details>
 
-* **Namespace**: (will become optional)
+* **Namespace**:
   The K8S namespace / RHOS project being use.
   <details>
   <summary><b><code>Click to view</code></b> bash code snippet</summary>
@@ -153,7 +154,10 @@ Also consider [kubectx](https://github.com/ahmetb/kubectx).
   
   </details>
 
-* **Model**: (will become optional)
+* **Endpoint**
+  Name of inference service or of a vLLM pod
+
+* **Model**: [Optional (discovered from stack)]
   The exact model name of the LLM being served by your `llm-d` stack. 
 
   <details>
@@ -173,22 +177,59 @@ Also consider [kubectx](https://github.com/ahmetb/kubectx).
   </details>
 
 ### 4. Create Environment Configuration File
-Prepare a file `./myenv.sh` with the following content: (file name must have a `.sh` suffix)
+>  [!TIP]
+> Create a file with the environment variables used by `run.sh` by calling:
+> ```bash
+> run_wizard.sh > ./myenv.sh
+> ```
 
+Alternatively, create a file `./myenv.sh` with the following content: (file name must have a `.sh` suffix).
 ```bash
-export LLMDBENCH_DEPLOY_METHODS="infra-inference-scheduling-inference-gateway"  # replace with endpoint name
+# ==================================================
+# ENV variables for llm-d-benchmark runs.sh
+#
+# Source before calling run.sh or use with -c option
+# ==================================================
+
+# NAMESPACE
+# ---------
+# [-p] namespace where llm-d stack is deployed
+export LLMDBENCH_VLLM_COMMON_NAMESPACE=#<_ namespace _>
+# namespace where harness will be run (typically the same as llm-d stack)
+export LLMDBENCH_VLLM_HARNESS_NAMESPACE=#<_ namespace _>
+
+# HF_TOKEN
+# --------
+# secret name when HF_TOKEN is stored in llm-d namespace [optional]
+export HF_TOKEN_NAME=#<_ secret name _>
+# HuggingFace token [optional] (default to HF_TOKEN or token secret in llm-d stack)
+export LLMDBENCH_HF_TOKEN=#<_ your hugging face token _>
+
+# DIRECTORIES
+# -----------
+# directory for git clone of harness [optional]
+export LLMDBENCH_HARNESS_DIR=#<_ typically /tmp _>
+# directory for git clone of llm-d-infra [optional]
+export LLMDBENCH_INFRA_DIR=#<_ typically /tmp _>
+# directory for saving benchmark results (e.g., `/tmp/namespace`)
+export LLMDBENCH_CONTROL_WORK_DIR=#<_ name of your local Work Direcotry_ >
+
+# STORAGE
+# -------
+# [-k] PVC for benchmark results
+export LLMDBENCH_HARNESS_PVC_NAME=#<_ name of PVC to store benchmark results _>
+# Storage class for created PVCs [optional]
+export LLMDBENCH_VLLM_COMMON_PVC_STORAGE_CLASS=#<_ if creating a new PVC for results  _>
+
+# BENCHMARK PARAMETERS
+# --------------------
+# [-l] harness to use for benchmarking
 export LLMDBENCH_HARNESS_NAME="inference-perf"
-# export LLMDBENCH_HF_TOKEN=<_your Hugging Face token_>
-
-# Model name
-export LLMDBENCH_DEPLOY_MODEL_LIST=<_your full model name_>
-
-# Work Directory; for example "/tmp/<_namespace_>"
-export LLMDBENCH_CONTROL_WORK_DIR="<_name of your local Work Direcotry_>"
-
-# Persistent Volume Claim
-export LLMDBENCH_HARNESS_PVC_NAME="<_name of your Harness PVC_>"
-
+# [-t] endpoint name (service / vLLM)
+export LLMDBENCH_DEPLOY_METHODS="infra-inference-scheduling-inference-gateway"
+# [-m] model being benchmarked [optional]
+export LLMDBENCH_DEPLOY_MODEL_LIST=#<_ full model name as defined in llm-d stack _>
+# [-s] how long to wait for results
 # This is a timeout (seconds) for running a full test
 # If time expires the benchmark will still run but results will not be collected to local computer.
 export LLMDBENCH_HARNESS_WAIT_TIMEOUT=3600
@@ -203,8 +244,6 @@ export LLMDBENCH_HARNESS_WAIT_TIMEOUT=3600
 run.sh \
   -c "$(realpath ./myenv.sh)"   `# use full path` \
   -w "shared_prefix_synthetic"  `# <name of the Harness Profile>.yaml.in` \
-  # -s 10000                     # uncomment to setup timeout on command line. 
-  
 ```
 
 Wait for test completion... ⏳ ... ⏳ ... ⏳ ...
