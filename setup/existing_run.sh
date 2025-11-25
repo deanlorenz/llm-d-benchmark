@@ -14,7 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-LLMD_HF_TOKEN_NAME=llm-d-hf-token
+if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
+  echo "This script should be executed not sourced"
+  return 1
+fi
 
 set -euo pipefail
 
@@ -22,8 +25,7 @@ if [[ $0 != "-bash" ]]; then
     pushd `dirname "$(realpath $0)"` > /dev/null 2>&1
 fi
 
-#-- export LLMDBENCH_ENV_VAR_LIST=$(env | grep ^LLMDBENCH | cut -d '=' -f 1)
-_contorl_dir=$(realpath $(pwd)/)
+_contorl_dir=$(realpath $(pwd)/) #@TODO check if needed
 _script_name=$(echo $0 | rev | cut -d '/' -f 1 | rev)
 _steps_dir="$_contorl_dir/steps"
 
@@ -31,24 +33,14 @@ if [ $0 != "-bash" ] ; then
     popd  > /dev/null 2>&1
 fi
 
-#++ control.root_dir ++ export LLMDBENCH_MAIN_DIR=$(realpath ${_contorl_dir}/../)
-
-#-- export $kubectl=${$kubectl:-0}
-#-- export LLMDBENCH_CONTROL_VERBOSE=${LLMDBENCH_CONTROL_VERBOSE:-0}
-#-- export LLMDBENCH_DEPLOY_SCENARIO=
-#-- export LLMDBENCH_CLIOVERRIDE_DEPLOY_SCENARIO=
-#-- export LLMDBENCH_HARNESS_SKIP_RUN=${LLMDBENCH_HARNESS_SKIP_RUN:-0}
-#-- export LLMDBENCH_HARNESS_DEBUG=${LLMDBENCH_HARNESS_DEBUG:-0}
-# --export LLMDBENCH_CURRENT_STEP=99
-
 function show_usage {
-    cat <<-EOF
+  cat <<-EOF
     Usage: ${_scrip_name}
-        -c/--config path to configuration file
-        -v/--verbose print the command being executed, and result
-        -d/--debug execute harness in "debug-mode"
-        -n/--dry-run do not execute commands, just print what would be executed
-        -h/--help show this help
+      -c/--config path to configuration file
+      -v/--verbose print the command being executed, and result
+      -d/--debug execute harness in "debug-mode"
+      -n/--dry-run do not execute commands, just print what would be executed
+      -h/--help show this help
 	EOF     # note the tab before EOF to preserve indentation. Do not change to spaces.
 }
 
@@ -91,31 +83,13 @@ while [[ $# -gt 0 ]]; do
         shift
 done
 
-read_config_file $_config_file  # DO WE NEED THIS????
+#read_config_file $_config_file  # DO WE NEED THIS????
 
-#-- export LLMDBENCH_CONTROL_CLI_OPTS_PROCESSED=1
-
-#-- DO WE NEED THIS????
-
-source ${_control_dir}/env.sh
-kubectl=oc      # @TODO FIXME
-
-
-#-- export LLMDBENCH_BASE64_CONTEXT_CONTENTS=$_work_dir/environment/context.ctx
-
-#-- set +euo pipefail     @TODO check if we isolate some code
-#-- export LLMDBENCH_CURRENT_STEP=05
-#-- if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 0 && $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 0 ]]; then
-#--   export LLMDBENCH_VLLM_MODELSERVICE_URI_PROTOCOL="NA"
-#-- 
-#--   if [[ -z $LLMDBENCH_CONTROL_CLUSTER_NAMESPACE ]]; then
-#--     announce "❌ Unable automatically detect namespace. Environment variable \"LLMDBENCH_CONTROL_CLUSTER_NAMESPACE\". Specifiy namespace via CLI option \"-p\--namespace\" or environment variable \"_harness_nameSPACE\""
-#--     exit 1
-#--   fi
-#-- fi
+#source ${_control_dir}/env.sh #@TODO WE NEED THIS????
+_kubectl="$(get_config control.kubectl)"
 
 _work_dir="$(get_config control.work_dir)"
-mkdir -p ${_work_dir}/setup/commands
+mkdir -p ${_work_dir}/setup/commands #@TODO do we need this?
 
 python3 ${_steps_dir}/05_ensure_harness_namespace_prepared.py 2> ${_work_dir}/setup/commands/05_ensure_harness_namespace_prepare_stderr.log 1> ${_work_dir}/setup/commands/05_ensure_harness_namespace_prepare_stdout.log
 if [[ $? -ne 0 ]]; then
@@ -133,116 +107,39 @@ _base_url="$(get_config endpoint.base_url)"
 _inference_url="${_base_url}/v1/chat/completions"
 _model_url="${_base_url}/v1/models"
 _model="$(get_config endpoint.model)"
-announce "ℹ️ Using _stack_name=$_stack_name on _namespace=$_namespace running model=$_model at _base_url=$_base_url"
 _harness_name="$(get_config harness.name)"
 _harness_namespace="$(get_config harness.namespace)"
 _harness_pod_name=llmdbench-${_harness_name}-launcher
+
+announce "ℹ️ Using _stack_name=$_stack_name on _namespace=$_namespace running model=$_model at _base_url=$_base_url"
 announce "ℹ️ Using _harness_name=$_harness_name, with _harness_pod_name=$_harness_pod_name on _harness_namespace=$_harness_namespace"
 
+_hf_token_secret="$(get_config endpoint.hf_token_secret)"
 
-#--    export LLMDBENCH_DEPLOY_CURRENT_TOKENIZER=$(model_attribute $model model)
-
-#--     if [[ $LLMDBENCH_HARNESS_SKIP_RUN -eq 1 ]]; then
-#--       announce "⏭️ Command line option \"-z\--skip\" invoked. Will skip experiment execution (and move straight to analysis)"
-#--     else
-#--       cleanup_pre_execution
-
-#--       export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=
-#--       export LLMDBENCH_VLLM_FQDN=".${_namespace}${LLMDBENCH_VLLM_COMMON_FQDN}"
-
-#-- #   if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 1 ]]; then
-    #     export LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD="LLMDBENCH_BASE64_CONTEXT_CONTENTS|^LLMDBENCH_VLLM_COMMON|^LLMDBENCH_VLLM_STANDALONE|^LLMDBENCH_DEPLOY"
-    #     export LLMDBENCH_HARNESS_STACK_TYPE=vllm-prod
-    #     export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${$kubectl} --namespace "$_namespace" get service --no-headers -l stood-up-via=${LLMDBENCH_DEPLOY_METHODS} | awk '{print $1}' || true)
-    #     export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=80
-    #   fi
-
-    #   if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
-    #     export LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD="LLMDBENCH_BASE64_CONTEXT_CONTENTS|^LLMDBENCH_VLLM_COMMON|^LLMDBENCH_VLLM_MODELSERVICE|^LLMDBENCH_DEPLOY|^LLMDBENCH_VLLM_INFRA|^LLMDBENCH_VLLM_GAIE|^LLMDBENCH_LLMD_IMAGE"
-    #     export LLMDBENCH_HARNESS_STACK_TYPE=llm-d
-    #     export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${$kubectl} --namespace "$_namespace" get gateway --no-headers -l stood-up-via=${LLMDBENCH_DEPLOY_METHODS} | awk '{print $1}')
-    #     export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=80
-    #   fi
-
-    #   if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 0 && $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 0 ]]; then
-    #     export LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD="LLMDBENCH_BASE64_CONTEXT_CONTENTS|^_namespace|^LLMDBENCH_DEPLOY_CURRENT"
-    #     announce "⚠️ Deployment method - $LLMDBENCH_DEPLOY_METHODS - is neither \"standalone\" nor \"modelservice\". "
-
-    #     announce "🔍 Trying to find a matching endpoint name..."
-
-    #     export LLMDBENCH_HARNESS_STACK_TYPE=vllm-prod
-    #     export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${$kubectl} --namespace "$_namespace" get service --no-headers | awk '{print $1}' | grep ${LLMDBENCH_DEPLOY_METHODS} || true)
-    #     if [[ ! -z $LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME ]]; then
-    #       for i in default http; do
-    #         export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=$(${$kubectl} --namespace "$_namespace" get service/$LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME --no-headers -o json | jq -r ".spec.ports[] | select(.name == \"$i\") | .port")
-    #         if [[ ! -z $LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT ]]; then
-    #           break
-    #         fi
-    #       done
-    #       if [[ -z $LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT ]]; then
-    #         announce "❌ ERROR: could not find a port for endpoint name \"$$LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME\""
-    #         exit 1
-    #       fi
-    #     else
-    #       export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${$kubectl} --namespace "$_namespace" get pod --no-headers | awk '{print $1}' | grep ${LLMDBENCH_DEPLOY_METHODS} | head -n 1 || true)
-    #       export LLMDBENCH_VLLM_FQDN=
-    #       if [[ ! -z $LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME ]]; then
-    #         announce "ℹ️ Stack Endpoint name detected is \"$LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME\""
-    #         export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=$(${$kubectl} --namespace "$_namespace" get pod/$LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME --no-headers -o json | jq -r ".spec.containers[0].ports[0].containerPort")
-    #         export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=$(${$kubectl} --namespace "$_namespace" get pod/$LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME --no-headers -o json | jq -r ".status.podIP")
-    #       fi
-    #     fi
-    #     export LLMDBENCH_DEPLOY_CURRENT_MODEL="auto"
-    #   fi
-
-#-- #   if [[ $$kubectl -eq 1 ]]; then
-    #     export LLMDBENCH_HARNESS_STACK_TYPE=mock
-    #     export LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME=mock
-    #     export LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT=1234
-    #   fi
-
-#-- #   if [[ -z $LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME ]]; then
-    #     announce "❌ ERROR: could not find an endpoint name for a stack deployed via method \"$LLMDBENCH_DEPLOY_METHODS\" (i.e., with label \"stood-up-via=$LLMDBENCH_DEPLOY_METHODS\")"
-    #     announce "📌 Tip: If the llm-d stack you're trying to benchmark was NOT deployed via \"standup.sh\", just use \"run.sh -t <string that matches the service/gateway name>\""
-
-    #     exit 1
-    #   fi
-
-#      if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 1 ]]; then
-#        export LLMDBENCH_HARNESS_STACK_ENDPOINT_URL="http://${LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME}${LLMDBENCH_VLLM_FQDN}:${LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT}/${LLMDBENCH_DEPLOY_CURRENT_MODELID}"
-#      else
-        # export LLMDBENCH_HARNESS_STACK_ENDPOINT_URL="http://${LLMDBENCH_HARNESS_STACK_ENDPOINT_NAME}${LLMDBENCH_VLLM_FQDN}:${LLMDBENCH_HARNESS_STACK_ENDPOINT_PORT}"
-#      fi
-    #   announce "ℹ️ Stack Endpoint URL detected is \"$LLMDBENCH_HARNESS_STACK_ENDPOINT_URL\""
-
-    #   if [[ $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_STANDALONE_ACTIVE -eq 0 && $LLMDBENCH_CONTROL_ENVIRONMENT_TYPE_MODELSERVICE_ACTIVE -eq 0 ]]; then
-
-
-announce "🔍 Verifying hugging face token"
-_hf_token="$(get_config endpoint.huggingface_token)"
-stack_token="$(${$kubectl} --namespace "$_namespace" get secret "$LLMD_HF_TOKEN_NAME" -o jsonpath='{.data.*}' | base64 -d)"
-if [[ ! "$_hf_token" == "$stack_token" ]]; then
-    announce "❌ ERROR: hugging face token in configuration does not match the one in the stack"
-    exit 1
+if $_kubectl --namespace "$_namespace" get secret "$_hf_token_secret" 2>&1 > /dev/null; then 
+  announce "ℹ️ Using HF token secret $_hf_token_secret"
+else    
+  announce "❌ ERROR: could not fetch HF token secret $_hf_token_secret"
+  exit 1
 fi
-
-#--    #     if [[ ! -z $LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME ]]; then
-    #       announce "ℹ️ Hugging face token detected is \"$LLMDBENCH_VLLM_COMMON_HF_TOKEN_NAME\""
-    #     else
-    #       announce "❌ ERROR: could not find a hugging face token"
-    #       exit 1
-    #     fi
-    #   fi
-
-    #   announce "🔍 Trying to detect the model name served by the stack ($LLMDBENCH_HARNESS_STACK_ENDPOINT_URL)..."
-    #   if [[ $$kubectl -eq 1 ]]; then
-    #     announce "ℹ️ Stack model detected is \"mock\""
-    #   else
-
-    #     set +euo pipefail
 
 announce "🔍 Verifying model and endpoint"
 _harness_image="$(get_config harness.image)"
+
+$_kubectl -n $_namespace run --rm -it --image=alpine/curl --restart=Never model-list-$(date +%s) \
+    -- curl "${_base_url}/v1/completions" \
+    -H "Content-Type: application/json" \
+    -d '{
+        "model": $_model_name,
+        "prompt": "Hello"
+    }'
+
+if [[ $? -ne 0 ]]; then
+  announce "❌ Error while sending completion request to the model"
+  exit 1
+fi
+
+
 received_model_name=$(get_model_name_from_pod "{$_namespace}" "{$_harness_image}" "${_base_url}" NA)  # @TODO check function and url
 if [[ ${received_model_name} == ${_model} ]]; then
     announce "ℹ️ Detected stack model \"$received_model_name\" matches requested model \"$_model\""
@@ -251,42 +148,21 @@ else
     exit 1
 fi
 
-        # if [[ $LLMDBENCH_DEPLOY_CURRENT_MODEL == "auto" ]]; then
-        #   if [[ -z $received_model_name ]]; then
-        #     announce "❌ Unable to detect stack model!"
-        #     exit 1
-        #   fi
-
-        #   export LLMDBENCH_DEPLOY_CURRENT_MODEL=$received_model_name
-        #   export LLMDBENCH_DEPLOY_CURRENT_MODELID=$(model_attribute $LLMDBENCH_DEPLOY_CURRENT_MODEL modelid)
-        #   export _stack_name=$(echo ${method} | $LLMDBENCH_CONTROL_SCMD 's^modelservice^llm-d^g')-$(model_attribute $LLMDBENCH_DEPLOY_CURRENT_MODEL parameters)-$(model_attribute $LLMDBENCH_DEPLOY_CURRENT_MODEL modeltype)
-        #   export LLMDBENCH_DEPLOY_CURRENT_TOKENIZER=$(model_attribute $LLMDBENCH_DEPLOY_CURRENT_MODEL model)
-
-        #   announce "ℹ️ Stack model detected is \"$received_model_name\""
-
 rm -rf ${_work_dir}/workload/profiles/*
 mkdir -p ${_work_dir}/workload/profiles/${_harness_name}
 
+$_kubectl --namespace "${_harness_namespace}" delete configmap ${_harness_name}-profiles --ignore-not-found"
+$_kubectl --namespace "${_harness_namespace}" apply -f <(cat <<-EOF | k apply -n dpikus-ns  -f -
+  apiVersion: v1
+  data: |
+$(yq '.workload' $_config_file | sed 's/^/    /')
+  kind: ConfigMap
+  metadata:
+    name: ${_harness_name}-profiles11111
+EOF
+)
 
-
-    #     generate_profile_parameter_treatments ${_harness_name} ${LLMDBENCH_HARNESS_EXPERIMENT_TREATMENTS}
-
-    #     workload_template_full_path=$(find ${LLMDBENCH_MAIN_DIR}/workload/profiles/${_harness_name}/ | grep ${LLMDBENCH_HARNESS_EXPERIMENT_PROFILE} | head -n 1 || true)
-    #     if [[ -z $workload_template_full_path ]]; then
-    #       announce "❌ Could not find workload template \"$LLMDBENCH_HARNESS_EXPERIMENT_PROFILE\" inside directory \"${LLMDBENCH_MAIN_DIR}/workload/profiles/${_harness_name}/\" (variable $LLMDBENCH_HARNESS_EXPERIMENT_PROFILE)"
-    #       exit 1
-    #     fi
-
-    #     render_workload_templates ${LLMDBENCH_HARNESS_EXPERIMENT_PROFILE}
-    #     export LLMDBENCH_HARNESS_PROFILE_HARNESS_LIST=$_harness_name
-
-    #     export LLMDBENCH_RUN_EXPERIMENT_HARNESS=$(find ${LLMDBENCH_MAIN_DIR}/workload/harnesses -name ${_harness_name}* | rev | cut -d '/' -f1 | rev)
-    #     export LLMDBENCH_RUN_EXPERIMENT_ANALYZER=$(find ${LLMDBENCH_MAIN_DIR}/analysis/ -name ${_harness_name}* | rev | cut -d '/' -f1 | rev)
-
-    #   fi
-
-$kubectl 
-
+# check the version after fix of identation
 
       for workload_type in ${LLMDBENCH_HARNESS_PROFILE_HARNESS_LIST}; do
         llmdbench_execute_cmd "${$kubectl} --namespace ${_harness_nameSPACE} delete configmap $workload_type-profiles --ignore-not-found" ${$kubectl} ${LLMDBENCH_CONTROL_VERBOSE}
