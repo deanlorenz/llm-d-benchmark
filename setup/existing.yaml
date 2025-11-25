@@ -1,10 +1,10 @@
 endpoint:
   stack_name: my-stack            # user defined name for the stack (results prefix)
   model: &model Qwen/Qwen3.2B     # Exact HuggingFace model name. Must match stack deployed.
-  namespace: &namespace dean-ns
-  url: &url http://qwen-modelservice.dean-ns.svc.cluster.local:8080/v1/chat/completions  # URL of inference endpoint
-  hf_token: &hf_token hf_WsXGfXJtYgkzQvYtYxWJvR     # TODO replace with environment variable reference
-  model_cache_pvc_name: model-pvc # PVC where model files are cached
+  &namespace namespace: dean-ns
+  base_url: &url http://qwen-modelservice.dean-ns.svc.cluster.local:8080  # Base URL of inference endpoint
+  hf_token: &hf_token hf_WsXGfXJtYgkzQvYtYxWJvR     # TODO replace with environment variable reference or secret name
+  model_pvc_name: model-pvc       # PVC where model files are cached
 
 
 control:
