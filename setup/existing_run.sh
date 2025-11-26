@@ -121,12 +121,12 @@ read_config "$_config_file"
 
 mkdir -p ${control_work_dir}/setup/commands #@TODO do we need this?
 
-#python3 ${_steps_dir}/05_ensureharnessendpoint_namespace_prepared.py 2> ${control_work_dir}/setup/commands/05_ensureharnessendpoint_namespace_prepare_stderr.log 1> ${control_work_dir}/setup/commands/05_ensureharnessendpoint_namespace_prepare_stdout.log
+#python3 ${_steps_dir}/05_ensureharness_namespace_prepared.py 2> ${control_work_dir}/setup/commands/05_ensureharness_namespace_prepare_stderr.log 1> ${control_work_dir}/setup/commands/05_ensureharness_namespace_prepare_stdout.log
 if [[ $? -ne 0 ]]; then
   announce "❌ Error while attempting to setup the harness namespace"
-  cat ${control_work_dir}/setup/commands/05_ensureharnessendpoint_namespace_prepare_stderr.log
+  cat ${control_work_dir}/setup/commands/05_ensureharness_namespace_prepare_stderr.log
   echo "---------------------------"
-  cat ${control_work_dir}/setup/commands/05_ensureharnessendpoint_namespace_prepare_stdout.log
+  cat ${control_work_dir}/setup/commands/05_ensureharness_namespace_prepare_stdout.log
   exit 1
 fi
 set -euo pipefail
@@ -150,6 +150,7 @@ announce "🔍 Verifying model and endpoint"
 
 # @TODO Set id in the beginning
 
+
 httpCode=$($control_kubectl -n $endpoint_namespace run --rm -it --image=alpine/curl --restart=Never model-list-$(date +%s) \
     -- curl -s -o /dev/null -w "%{http_code}\n" "${endpoint_base_url}/v1/completions" \
     -H "Content-Type: application/json" \
@@ -163,34 +164,37 @@ if [[ $? != 0 ]]; then
   exit 1
 fi
 
-if [[ $httpCode != 200 ]]; then
-  announce "❌ Error while sending completion request to the model(bad HTTP code)"
-  exit 1
-fi
+# @TODO Open the command below after stack is set
+# if [[ $httpCode != 200 ]]; then
+#   announce "❌ Error while sending completion request to the model(bad HTTP code)"
+#   exit 1
+# fi
 
-received_model_name=$(get_model_name_from_pod "{$endpoint_namespace}" "{$harness_image}" "${endpoint_base_url}" NA)  # @TODO check function and url
-if [[ ${received_model_name} == ${_model} ]]; then
-    announce "ℹ️ Detected stack model \"$received_model_name\" matches requested model \"$_model\""
-else
-    announce "❌ Detected Stack model \"$received_model_name\" does not match requested model \"$_model\""
-    exit 1
-fi
+# @TODO return actual error od the test above!!!
 
-rm -rf ${control_work_dir}/workload/profiles/*
-mkdir -p ${control_work_dir}/workload/profiles/${harness_name}
+# rm -rf ${control_work_dir}/workload/profiles/*
+# mkdir -p ${control_work_dir}/workload/profiles/${harness_name}
 
-$_kubectl --namespace "${harnessendpoint_namespace}" delete configmap ${harness_name}-profiles --ignore-not-found
-$_kubectl --namespace "${harnessendpoint_namespace}" apply -f <(cat <<YAML
-apiVersion: v1
-data: |
-$(yq 'explode(.workload)' $_config_file | sed 's/^/  /')
-kind: ConfigMap
-metadata:
-  name: ${harness_name}-profiles
-YAML
-)
+$control_kubectl --namespace "${harness_namespace}" delete configmap ${harness_name}-profiles --ignore-not-found
 
-$_kubectl --namespace "${harnessendpoint_namespace}" get configmap ${harness_name}-profiles #@DELME
+# $control_kubectl --namespace "${harness_namespace}" apply -f <(cat <<YAML
+# apiVersion: v1
+# data: |
+# $(yq '.workload | explode(.)' $_config_file | sed 's/^/  /')
+# kind: ConfigMap
+# metadata:
+#   name: ${harness_name}-profiles
+# YAML
+# )
+
+for key in $(yq '.workload | keys | .[]' $_config_file); do 
+#  echo $key
+  $control_kubectl create cm ${harness_name}-profiles  --namespace "${harness_namespace}" \
+  --dry-run=client \
+  --from-file="$key"=<(yq ".workload.$key | explode(.)" $_config_file) -o yaml | oc apply -f -
+done
+
+$control_kubectl --namespace "${harness_namespace}" get configmap ${harness_name}-profiles #@DELME
 
 _experiment_prefix=$(yq '.harness.experiment_prefix | join("-")' $_config_file) #@TODO create experimenty section 
 _uid=$(date +%s)
@@ -201,95 +205,95 @@ for wl in $(yq '.workload | keys | .[]' $_config_file); do
 done
 
 
-#       for treatment in $(ls ${control_work_dir}/workload/profiles/${workload_type}/*.yaml); do
+      for treatment in $(ls ${control_work_dir}/workload/profiles/${workload_type}/*.yaml); do
 
 
-#         # Assemble the pod specifications and build the workload
+        # Assemble the pod specifications and build the workload
 
-#         for i in $(seq 1 $LLMDBENCH_HARNESS_LOAD_PARALLELISM); do
-#           _pod_name="${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}-${i}-of-${LLMDBENCH_HARNESS_LOAD_PARALLELISM}"
+        for i in $(seq 1 $LLMDBENCH_HARNESS_LOAD_PARALLELISM); do
+          _pod_name="${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}-${i}-of-${LLMDBENCH_HARNESS_LOAD_PARALLELISM}"
 
-#           export LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX=${harness_name}_${LLMDBENCH_RUN_EXPERIMENT_ID}_${endpoint_stack_name}
-#           export LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR=${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_PREFIX}/${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX}_${i}
+          export LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX=${harness_name}_${LLMDBENCH_RUN_EXPERIMENT_ID}_${endpoint_stack_name}
+          export LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR=${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_PREFIX}/${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX}_${i}
 
-#           local_results_dir=${control_work_dir}/results/${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX}
-#           local_analysis_dir=${control_work_dir}/analysis/${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX}
-#           llmdbench_execute_cmd "mkdir -p ${local_results_dir}_${i} && mkdir -p ${local_analysis_dir}_${i}" \
-#                 ${$kubectl} \
-#                 ${LLMDBENCH_CONTROL_VERBOSE}
+          local_results_dir=${control_work_dir}/results/${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX}
+          local_analysis_dir=${control_work_dir}/analysis/${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX}
+          llmdbench_execute_cmd "mkdir -p ${local_results_dir}_${i} && mkdir -p ${local_analysis_dir}_${i}" \
+                ${$kubectl} \
+                ${LLMDBENCH_CONTROL_VERBOSE}
 
 
-#           if [[ -f ${local_analysis_dir}_{i}/summary.txt ]]; then
-#             announce "⏭️  This particular workload profile was already executed against this stack. Please remove \"${local_analysis_dir}_{i}/summary.txt\" to re-execute".
-#             continue
-#           fi
+          if [[ -f ${local_analysis_dir}_{i}/summary.txt ]]; then
+            announce "⏭️  This particular workload profile was already executed against this stack. Please remove \"${local_analysis_dir}_{i}/summary.txt\" to re-execute".
+            continue
+          fi
 
-#           if [[ $$kubectl -eq 1 ]]; then
-#             announce "ℹ️ Skipping \"${_pod_name}\" creation"
-#           else
-#             if [[ "$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE" == /* ]]; then
-#               potential_gaie_path=$(echo $LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE'.yaml' | $LLMDBENCH_CONTROL_SCMD 's^.yaml.yaml^.yaml^g')
-#             else
-#               potential_gaie_path=$(echo ${LLMDBENCH_MAIN_DIR}/setup/presets/gaie/$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE'.yaml' | $LLMDBENCH_CONTROL_SCMD 's^.yaml.yaml^.yaml^g')
-#             fi
+          if [[ $$kubectl -eq 1 ]]; then
+            announce "ℹ️ Skipping \"${_pod_name}\" creation"
+          else
+            if [[ "$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE" == /* ]]; then
+              potential_gaie_path=$(echo $LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE'.yaml' | $LLMDBENCH_CONTROL_SCMD 's^.yaml.yaml^.yaml^g')
+            else
+              potential_gaie_path=$(echo ${LLMDBENCH_MAIN_DIR}/setup/presets/gaie/$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE'.yaml' | $LLMDBENCH_CONTROL_SCMD 's^.yaml.yaml^.yaml^g')
+            fi
 
-#             if [[ -f $potential_gaie_path ]]; then
-#               export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONFIG=$potential_gaie_path
-#             fi
+            if [[ -f $potential_gaie_path ]]; then
+              export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONFIG=$potential_gaie_path
+            fi
 
-#             if [[ -f $potential_gaie_path ]]; then
-#               export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONFIG=$potential_gaie_path
-#             fi
-#             export LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD="^$(echo $LLMDBENCH_HARNESS_ENVVARS_TO_YAML | $LLMDBENCH_CONTROL_SCMD -e 's/,/|^/g' -e 's/$/|^/g')$LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD"
-#             create_harness_pod ${_pod_name} "${control_work_dir}/${_pod_name}"
-#           fi
-#         done
+            if [[ -f $potential_gaie_path ]]; then
+              export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONFIG=$potential_gaie_path
+            fi
+            export LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD="^$(echo $LLMDBENCH_HARNESS_ENVVARS_TO_YAML | $LLMDBENCH_CONTROL_SCMD -e 's/,/|^/g' -e 's/$/|^/g')$LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD"
+            create_harness_pod ${_pod_name} "${control_work_dir}/${_pod_name}"
+          fi
+        done
 
-#         _combined_pod_config="${control_work_dir}/setup/yamls/${harness_name}_${LLMDBENCH_RUN_EXPERIMENT_ID}_${endpoint_stack_name}.yaml"
-#         rm -rf ${_combined_pod_config}
-#         touch ${_combined_pod_config}
-#         for i in $(seq 1 "$LLMDBENCH_HARNESS_LOAD_PARALLELISM"); do
-#             _pod_name="${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}-${i}-of-${LLMDBENCH_HARNESS_LOAD_PARALLELISM}"
-#             _yaml_path="${control_work_dir}/${_pod_name}/setup/yamls/pod_benchmark-launcher.yaml"
+        _combined_pod_config="${control_work_dir}/setup/yamls/${harness_name}_${LLMDBENCH_RUN_EXPERIMENT_ID}_${endpoint_stack_name}.yaml"
+        rm -rf ${_combined_pod_config}
+        touch ${_combined_pod_config}
+        for i in $(seq 1 "$LLMDBENCH_HARNESS_LOAD_PARALLELISM"); do
+            _pod_name="${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}-${i}-of-${LLMDBENCH_HARNESS_LOAD_PARALLELISM}"
+            _yaml_path="${control_work_dir}/${_pod_name}/setup/yamls/pod_benchmark-launcher.yaml"
 
-#             if [[ ! -f "$_combined_pod_config" ]]; then
-#                 announce  "⚠️  WARNING: YAML not found: $_yaml_path" >&2
-#                 continue
-#             fi
+            if [[ ! -f "$_combined_pod_config" ]]; then
+                announce  "⚠️  WARNING: YAML not found: $_yaml_path" >&2
+                continue
+            fi
 
-#             echo "---" >> "$_combined_pod_config"
-#             cat "$_yaml_path" >> "$_combined_pod_config"
-#             echo >> "$_combined_pod_config"
-#         done
+            echo "---" >> "$_combined_pod_config"
+            cat "$_yaml_path" >> "$_combined_pod_config"
+            echo >> "$_combined_pod_config"
+        done
 
-#         deploy_harness_config ${LLMDBENCH_DEPLOY_CURRENT_MODEL} ${LLMDBENCH_DEPLOY_CURRENT_MODELID} ${local_results_dir} ${local_analysis_dir} ${_combined_pod_config}
+        deploy_harness_config ${LLMDBENCH_DEPLOY_CURRENT_MODEL} ${LLMDBENCH_DEPLOY_CURRENT_MODELID} ${local_results_dir} ${local_analysis_dir} ${_combined_pod_config}
 
-#         if [[ $LLMDBENCH_HARNESS_DEBUG -eq 1 ]]; then
-#           exit 0
-#         fi
-#       done
-#     fi
+        if [[ $LLMDBENCH_HARNESS_DEBUG -eq 1 ]]; then
+          exit 0
+        fi
+      done
+    fi
 
-#     if [[ $LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY -eq 1 ]]; then
-#       announce "🔍 Analyzing collected data..."
-#       conda_root="$(conda info --all --json | jq -r '.root_prefix'  2>/dev/null)"
-#       if [ "$LLMDBENCH_CONTROL_DEPLOY_HOST_OS" = "mac" ]; then
-#         conda_sh="${conda_root}/base/etc/profile.d/conda.sh"
-#       else
-#         conda_sh="${conda_root}/etc/profile.d/conda.sh"
-#       fi
-#       if [ -f "${conda_sh}" ]; then
-#         llmdbench_execute_cmd "source \"${conda_sh}\"" ${$kubectl} ${LLMDBENCH_CONTROL_VERBOSE}
-#       else
-#         announce "❌ Could not find conda.sh for $LLMDBENCH_CONTROL_DEPLOY_HOST_OS. Please verify your Anaconda installation."
-#         exit 1
-#       fi
+    if [[ $LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY -eq 1 ]]; then
+      announce "🔍 Analyzing collected data..."
+      conda_root="$(conda info --all --json | jq -r '.root_prefix'  2>/dev/null)"
+      if [ "$LLMDBENCH_CONTROL_DEPLOY_HOST_OS" = "mac" ]; then
+        conda_sh="${conda_root}/base/etc/profile.d/conda.sh"
+      else
+        conda_sh="${conda_root}/etc/profile.d/conda.sh"
+      fi
+      if [ -f "${conda_sh}" ]; then
+        llmdbench_execute_cmd "source \"${conda_sh}\"" ${$kubectl} ${LLMDBENCH_CONTROL_VERBOSE}
+      else
+        announce "❌ Could not find conda.sh for $LLMDBENCH_CONTROL_DEPLOY_HOST_OS. Please verify your Anaconda installation."
+        exit 1
+      fi
 
-#       llmdbench_execute_cmd "conda activate \"$LLMDBENCH_HARNESS_CONDA_ENV_NAME\"" ${$kubectl} ${LLMDBENCH_CONTROL_VERBOSE}
-#       llmdbench_execute_cmd "${LLMDBENCH_CONTROL_PCMD} $LLMDBENCH_MAIN_DIR/analysis/analyze_results.py" ${$kubectl} ${LLMDBENCH_CONTROL_VERBOSE}
-#       announce "✅ Data analysis done."
-#     fi
-#     unset LLMDBENCH_DEPLOY_CURRENT_MODEL
+      llmdbench_execute_cmd "conda activate \"$LLMDBENCH_HARNESS_CONDA_ENV_NAME\"" ${$kubectl} ${LLMDBENCH_CONTROL_VERBOSE}
+      llmdbench_execute_cmd "${LLMDBENCH_CONTROL_PCMD} $LLMDBENCH_MAIN_DIR/analysis/analyze_results.py" ${$kubectl} ${LLMDBENCH_CONTROL_VERBOSE}
+      announce "✅ Data analysis done."
+    fi
+    unset LLMDBENCH_DEPLOY_CURRENT_MODEL
 
-#   done
-# done
+  done
+done
