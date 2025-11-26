@@ -21,7 +21,7 @@ Thumbs.db
 **/*yaml.secrets
 
 # VS Code
-.vscode/
+#.vscode/
 
 # Test binary, built with `go test -c`
 *.test
