@@ -8,9 +8,9 @@
             "type": "bashdb",
             "request": "launch",
             "name": "Bash-Debug run.sh",
-            "program": "${workspaceFolder}/setup/existing_run.sh",
+            "program": "${workspaceFolder}/existing_stack/run.sh",
             "args": [
-                "-c", "${workspaceFolder}/setup/existing.yaml",
+                "-c", "${workspaceFolder}/existing_stack/config.yaml",
             ],
             "cwd": "${workspaceFolder}",
             "terminalKind": "integrated"

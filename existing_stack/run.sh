@@ -177,24 +177,14 @@ fi
 
 $control_kubectl --namespace "${harness_namespace}" delete configmap ${harness_name}-profiles --ignore-not-found
 
-# $control_kubectl --namespace "${harness_namespace}" apply -f <(cat <<YAML
-# apiVersion: v1
-# data: |
-# $(yq '.workload | explode(.)' $_config_file | sed 's/^/  /')
-# kind: ConfigMap
-# metadata:
-#   name: ${harness_name}-profiles
-# YAML
-# )
-
-for key in $(yq '.workload | keys | .[]' $_config_file); do 
-#  echo $key
-  $control_kubectl create cm ${harness_name}-profiles  --namespace "${harness_namespace}" \
-  --dry-run=client \
-  --from-file="$key"=<(yq ".workload.$key | explode(.)" $_config_file) -o yaml | oc apply -f -
+cmd=($control_kubectl create cm ${harness_name}-profiles)
+cmd+=(--namespace "${harness_namespace}")
+for key in $(yq '.workload | keys | .[]' $_config_file); do
+  cmd+=( --from-file=${key}.yaml='<(yq ".workload.'$key' | explode(.)" '$_config_file')')
 done
+eval ${cmd[@]}
+announce "ℹ️ ConfigMap '${harness_name}-profiles' created"
 
-$control_kubectl --namespace "${harness_namespace}" get configmap ${harness_name}-profiles #@DELME
 
 _experiment_prefix=$(yq '.harness.experiment_prefix | join("-")' $_config_file) #@TODO create experimenty section 
 _uid=$(date +%s)
