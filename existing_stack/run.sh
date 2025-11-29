@@ -28,6 +28,7 @@ fi
 _contorl_dir=$(realpath $(pwd)/) #@TODO check if needed
 _script_name=$(echo $0 | rev | cut -d '/' -f 1 | rev)
 _steps_dir="$_contorl_dir/steps"
+_uid=$(date +%s)
 
 if [ $0 != "-bash" ] ; then
     popd  > /dev/null 2>&1
@@ -46,31 +47,6 @@ EOF
 
 function read_config {
   eval $(yq 'del(.workload)' -o shell "$1")
-}
-
-
-function announce {
-    # 1 - MESSAGE
-    # 2 - LOGFILE
-    echo ">>>>>>--------------------"
-    local message=$(echo ${1})
-    local logfile=${2:-1}
-
-    if [[ ! -z ${logfile} ]]
-    then
-        if [[ ${logfile} == "silent" || ${logfile} -eq 0 ]]
-        then
-            echo -e "==> $(date) - ${0} - $message" >> /dev/null
-        elif [[ ${logfile} -eq 1 ]]
-        then
-            echo -e "==> $(date) - ${0} - $message"
-        else
-            echo -e "==> $(date) - ${0} - $message" >> ${logfile}
-        fi
-    else
-        echo -e "==> $(date) - ${0} - $message"
-    fi
-    echo "<<<<<<<<--------------------"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -118,7 +94,6 @@ done
 ls "$_config_file"
 read_config "$_config_file"
 
-
 mkdir -p ${control_work_dir}/setup/commands #@TODO do we need this?
 
 #python3 ${_steps_dir}/05_ensureharness_namespace_prepared.py 2> ${control_work_dir}/setup/commands/05_ensureharness_namespace_prepare_stderr.log 1> ${control_work_dir}/setup/commands/05_ensureharness_namespace_prepare_stdout.log
@@ -151,7 +126,7 @@ announce "🔍 Verifying model and endpoint"
 # @TODO Set id in the beginning
 
 
-httpCode=$($control_kubectl -n $endpoint_namespace run --rm -it --image=alpine/curl --restart=Never model-list-$(date +%s) \
+httpCode=$($control_kubectl -n $endpoint_namespace run --rm -it --image=alpine/curl --restart=Never model-list-${_uid} \
     -- curl -s -o /dev/null -w "%{http_code}\n" "${endpoint_base_url}/v1/completions" \
     -H "Content-Type: application/json" \
     -d '{
@@ -185,14 +160,16 @@ done
 eval ${cmd[@]}
 announce "ℹ️ ConfigMap '${harness_name}-profiles' created"
 
+announce "ℹ️ Using experiment prefix ${harness_experiment_prefix}_${_uid}_<workload_key>_"
 
-_experiment_prefix=$(yq '.harness.experiment_prefix | join("-")' $_config_file) #@TODO create experimenty section 
-_uid=$(date +%s)
-announce "ℹ️ Using experiment prefix ${_experiment_prefix}_${_uid}_<workload_key>_"
+announce "ℹ️ Checking results PVC"
+if ! $control_kubectl --namespace=${harness_namespace} describe pvc ${results_pvc}; then # @TODO Verify status and RWX 
+  announce "❌ Error checking PVC ${results_pvc}"
+fi
+  
+_pod_name=llmdbench-${harness_name}-launcher
+create_harness_pod ${_pod_name} "${control_work_dir}/${_pod_name}" ${harness_image}
 
-for wl in $(yq '.workload | keys | .[]' $_config_file); do
-  echo {wl} 
-done
 
 
       for treatment in $(ls ${control_work_dir}/workload/profiles/${workload_type}/*.yaml); do
