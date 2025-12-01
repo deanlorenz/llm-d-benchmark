@@ -19,17 +19,15 @@ if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
   return 1
 fi
 
+cd `dirname "$(realpath $0)"` > /dev/null 2>&1
+
 set -euo pipefail
 
-if [[ $0 != "-bash" ]]; then
-    pushd `dirname "$(realpath $0)"` > /dev/null 2>&1
-fi
 
 _script_name=$(echo $0 | rev | cut -d '/' -f 1 | rev)
+_control_dir=$(realpath $(pwd)/) #@TODO check if needed
+source ${_control_dir}/functions.sh
 
-if [ $0 != "-bash" ] ; then
-    popd  > /dev/null 2>&1
-fi
 
 function show_usage {
 cat <<EOF
@@ -43,7 +41,9 @@ EOF
 }
 
 function read_config {
-  eval $(yq 'del(.workload)' -o shell "$1")
+  # $1 - configuration yaml file
+  # $2 - uid of the experiment
+  eval $( yq -o shell '.harness.experiment_prefix |= (explode(.) | join("_") + "$2") | del(.workload)' "$1")
 }
 
 while [[ $# -gt 0 ]]; do
@@ -93,16 +93,18 @@ if ! [[ -f $_config_file  ]]; then
   echo "❌ ERROR: could not find config file \"$_config_file\""
   exit 1
 fi
-read_config "$_config_file"
+
+_uid=$(date +%s)  # @TODO consider calling this _experiment_uid
+read_config "$_config_file" "${_uid}"
+compgen -v
 
 _inference_url="${endpoint_base_url}/v1/chat/completions"
 _model_url="${endpoint_base_url}/v1/models" # @TODO check if needed
 _harness_pod_name=llmdbench-${harness_name}-launcher
-_uid=$(date +%s)  # @TODO consider calling this _experiment_uid
 
 announce "ℹ️ Using endpoint_stack_name=$endpoint_stack_name on endpoint_namespace=$endpoint_namespace running model=${endpoint_model} at endpoint_base_url=$endpoint_base_url"
 announce "ℹ️ Using harness_name=$harness_name, with _harness_pod_name=$_harness_pod_name on harness_namespace=$harness_namespace"
-announce "ℹ️ Using experiment prefix ${harness_experiment_prefix}_${_uid}_<workload_key>_"
+announce "ℹ️ Using experiment prefix ${harness_experiment_prefix}_<workload_key>_"
 
 
 mkdir -p ${control_work_dir}/setup/commands #@TODO do we need this?
@@ -124,7 +126,7 @@ fi
 
 # Verify HF token secret exists
 # ========================================================
-announce "🔧 Verifying HF token secret $endpoint_hf_token_secret in namespace $endpoint"
+announce "🔧 Verifying HF token secret ${endpoint_hf_token_secret} in namespace ${endpoint_namespace}"
 if $control_kubectl --namespace "$endpoint_namespace" get secret "$endpoint_hf_token_secret" 2>&1 > /dev/null; then 
   announce "ℹ️ Using HF token secret $endpoint_hf_token_secret"
 else    
@@ -174,8 +176,8 @@ announce "ℹ️ ConfigMap '${harness_name}-profiles' created"
 
 
 announce "ℹ️ Checking results PVC"
-if ! $control_kubectl --namespace=${harness_namespace} describe pvc ${results_pvc}; then # @TODO Verify status and RWX 
-  announce "❌ Error checking PVC ${results_pvc}"
+if ! $control_kubectl --namespace=${harness_namespace} describe pvc ${harness_results_pvc}; then # @TODO Verify status and RWX 
+  announce "❌ Error checking PVC ${harness_results_pvc}"
 fi
   
 _pod_name=llmdbench-${harness_name}-launcher
@@ -223,7 +225,7 @@ create_harness_pod ${_pod_name} "${control_work_dir}/${_pod_name}" ${harness_ima
               export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONFIG=$potential_gaie_path
             fi
             export LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD="^$(echo $LLMDBENCH_HARNESS_ENVVARS_TO_YAML | $LLMDBENCH_CONTROL_SCMD -e 's/,/|^/g' -e 's/$/|^/g')$LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD"
-            create_harness_pod ${_pod_name} "${control_work_dir}/${_pod_name}"
+            create_harness_pod ${_pod_name}
           fi
         done
 
