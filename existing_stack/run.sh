@@ -25,10 +25,7 @@ if [[ $0 != "-bash" ]]; then
     pushd `dirname "$(realpath $0)"` > /dev/null 2>&1
 fi
 
-_contorl_dir=$(realpath $(pwd)/) #@TODO check if needed
 _script_name=$(echo $0 | rev | cut -d '/' -f 1 | rev)
-_steps_dir="$_contorl_dir/steps"
-_uid=$(date +%s)
 
 if [ $0 != "-bash" ] ; then
     popd  > /dev/null 2>&1
@@ -87,15 +84,35 @@ while [[ $# -gt 0 ]]; do
         shift
 done
 
-#read_config_file $_config_file  # DO WE NEED THIS????
-
 #source ${_control_dir}/env.sh #@TODO WE NEED THIS????
 
-ls "$_config_file"
+# Read configuration file
+# ========================================================
+announce "📄 Reading configuration file $_config_file"
+if ! [[ -f $_config_file  ]]; then
+  echo "❌ ERROR: could not find config file \"$_config_file\""
+  exit 1
+fi
 read_config "$_config_file"
+
+_inference_url="${endpoint_base_url}/v1/chat/completions"
+_model_url="${endpoint_base_url}/v1/models" # @TODO check if needed
+_harness_pod_name=llmdbench-${harness_name}-launcher
+_uid=$(date +%s)  # @TODO consider calling this _experiment_uid
+
+announce "ℹ️ Using endpoint_stack_name=$endpoint_stack_name on endpoint_namespace=$endpoint_namespace running model=${endpoint_model} at endpoint_base_url=$endpoint_base_url"
+announce "ℹ️ Using harness_name=$harness_name, with _harness_pod_name=$_harness_pod_name on harness_namespace=$harness_namespace"
+announce "ℹ️ Using experiment prefix ${harness_experiment_prefix}_${_uid}_<workload_key>_"
+
 
 mkdir -p ${control_work_dir}/setup/commands #@TODO do we need this?
 
+
+# Ensure harness namespace is prepared @TODO enable python script
+# ========================================================
+announce "🔧 Ensuring harness namespace is prepared"
+_control_dir=$(realpath $(pwd)/) #@TODO check if needed
+_steps_dir="$_control_dir/steps"
 #python3 ${_steps_dir}/05_ensureharness_namespace_prepared.py 2> ${control_work_dir}/setup/commands/05_ensureharness_namespace_prepare_stderr.log 1> ${control_work_dir}/setup/commands/05_ensureharness_namespace_prepare_stdout.log
 if [[ $? -ne 0 ]]; then
   announce "❌ Error while attempting to setup the harness namespace"
@@ -104,16 +121,10 @@ if [[ $? -ne 0 ]]; then
   cat ${control_work_dir}/setup/commands/05_ensureharness_namespace_prepare_stdout.log
   exit 1
 fi
-set -euo pipefail
 
-_inference_url="${endpoint_base_url}/v1/chat/completions"
-_model_url="${endpoint_base_url}/v1/models" # @TODO check if needed
-_harness_pod_name=llmdbench-${harness_name}-launcher
-
-announce "ℹ️ Using endpoint_stack_name=$endpoint_stack_name on endpoint_namespace=$endpoint_namespace running model=${endpoint_model} at endpoint_base_url=$endpoint_base_url"
-announce "ℹ️ Using harness_name=$harness_name, with _harness_pod_name=$_harness_pod_name on harness_namespace=$harness_namespace"
-
-
+# Verify HF token secret exists
+# ========================================================
+announce "🔧 Verifying HF token secret $endpoint_hf_token_secret in namespace $endpoint"
 if $control_kubectl --namespace "$endpoint_namespace" get secret "$endpoint_hf_token_secret" 2>&1 > /dev/null; then 
   announce "ℹ️ Using HF token secret $endpoint_hf_token_secret"
 else    
@@ -121,11 +132,9 @@ else
   exit 1
 fi
 
+# Verify model is deployed and endpoint is reachable
+# ========================================================
 announce "🔍 Verifying model and endpoint"
-
-# @TODO Set id in the beginning
-
-
 httpCode=$($control_kubectl -n $endpoint_namespace run --rm -it --image=alpine/curl --restart=Never model-list-${_uid} \
     -- curl -s -o /dev/null -w "%{http_code}\n" "${endpoint_base_url}/v1/completions" \
     -H "Content-Type: application/json" \
@@ -138,7 +147,6 @@ if [[ $? != 0 ]]; then
   announce "❌ Error while sending completion request to the model (kubectl failed)"
   exit 1
 fi
-
 # @TODO Open the command below after stack is set
 # if [[ $httpCode != 200 ]]; then
 #   announce "❌ Error while sending completion request to the model(bad HTTP code)"
@@ -150,6 +158,10 @@ fi
 # rm -rf ${control_work_dir}/workload/profiles/*
 # mkdir -p ${control_work_dir}/workload/profiles/${harness_name}
 
+
+# Prepare ConfigMap with workload profiles
+# ========================================================
+announce "🔧 Preparing ConfigMap with workload profiles"
 $control_kubectl --namespace "${harness_namespace}" delete configmap ${harness_name}-profiles --ignore-not-found
 
 cmd=($control_kubectl create cm ${harness_name}-profiles)
@@ -160,7 +172,6 @@ done
 eval ${cmd[@]}
 announce "ℹ️ ConfigMap '${harness_name}-profiles' created"
 
-announce "ℹ️ Using experiment prefix ${harness_experiment_prefix}_${_uid}_<workload_key>_"
 
 announce "ℹ️ Checking results PVC"
 if ! $control_kubectl --namespace=${harness_namespace} describe pvc ${results_pvc}; then # @TODO Verify status and RWX 
