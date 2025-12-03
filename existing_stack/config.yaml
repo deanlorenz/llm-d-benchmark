@@ -1,7 +1,7 @@
 endpoint:
-  stack_name: &stack_name my-stack            # user defined name for the stack (results prefix)
-  model: &model Qwen/Qwen3.2B       # Exact HuggingFace model name. Must match stack deployed.
-  namespace: &namespace dpikus-ns
+  stack_name: &stack_name inference-perf-Qwen32B  # user defined name for the stack (results prefix)
+  model: &model Qwen/Qwen32B                      # Exact HuggingFace model name. Must match stack deployed.
+  namespace: &namespace dean-ns
   base_url: &url http://infra-inference-scheduling-inference-gateway.dpikus-ns.svc.cluster.local:80  # Base URL of inference endpoint
   hf_token_secret: llm-d-hf-token   # The name of secret that contains the HF token of the stack
   model_pvc: model-pvc              # PVC where model files are cached
@@ -22,7 +22,8 @@ harness:
   wait_timeout: 600               # Time (in seconds) to wait for workload launcher pod to complete before terminating.
                                   # Set to 0 to disable timeout.
                                   # Note: workload launcher pod will continue running in cluster if timeout occurs.
-  image: ghcr.io/llm-d/llm-d-benchmark:latest # llm-d-benchmark harness image 
+#  image: ghcr.io/llm-d/llm-d-benchmark:latest # llm-d-benchmark harness image
+  image: quay.io/dpikus/llm-d-benchmark:v0.2.2_fix
                                   # @TODO do not use latest in production, use specific version tag.
   experiment_prefix: [ *stack_name, *harness_name ]
   dataset_url: &dataset_url none

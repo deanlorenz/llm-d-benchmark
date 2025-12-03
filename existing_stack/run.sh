@@ -26,6 +26,7 @@ set -euo pipefail
 
 _script_name=$(echo $0 | rev | cut -d '/' -f 1 | rev)
 _control_dir=$(realpath $(pwd)/) #@TODO check if needed
+_root_dir=$(realpath "${_control_dir}/../")
 source ${_control_dir}/functions.sh
 
 
@@ -180,9 +181,13 @@ if ! $control_kubectl --namespace=${harness_namespace} describe pvc ${harness_re
   announce "❌ Error checking PVC ${harness_results_pvc}"
 fi
   
-_pod_name=llmdbench-${harness_name}-launcher
-create_harness_pod ${_pod_name} "${control_work_dir}/${_pod_name}" ${harness_image}
+_pod_name=$(sanitize llmdbench-${harness_name}-launcher)
+announce "ℹ️ Checking harness pod ${_pod_name}"
+create_harness_pod ${_pod_name}
 
+# deploy_harness_config ${LLMDBENCH_DEPLOY_CURRENT_MODEL} ${LLMDBENCH_DEPLOY_CURRENT_MODELID} ${local_results_dir} ${local_analysis_dir} ${_combined_pod_config}
+
+exit 0
 
 
       for treatment in $(ls ${control_work_dir}/workload/profiles/${workload_type}/*.yaml); do
@@ -252,7 +257,6 @@ create_harness_pod ${_pod_name} "${control_work_dir}/${_pod_name}" ${harness_ima
           exit 0
         fi
       done
-    fi
 
     if [[ $LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY -eq 1 ]]; then
       announce "🔍 Analyzing collected data..."
