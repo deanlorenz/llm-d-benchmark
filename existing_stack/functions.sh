@@ -12,6 +12,9 @@ CONTROL_WAIT_TIMEOUT=180
 function announce {
     # 1 - MESSAGE
     # 2 - LOGFILE
+
+    echo
+    echo
     echo ">>>>>>--------------------"
     local message=$(echo ${1})
     local logfile=${2:-1}
@@ -28,7 +31,9 @@ function announce {
             echo -e "==> $(date) - ${0} - $message" >> ${logfile}
         fi
     else
+        echo
         echo -e "==> $(date) - ${0} - $message"
+        echo
     fi
     echo "<<<<<<<<--------------------"
 }
@@ -93,16 +98,16 @@ spec:
     #   value: ""
     - name: LLMDBENCH_HARNESS_NAME
       value: "${harness_name}"
-    - name: LLMDBENCH_RUN_EXPERIMENT_ID
-      value: "${_uid}"
+    # - name: LLMDBENCH_RUN_EXPERIMENT_ID
+    #   value: "${_uid}"
     - name: LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_PREFIX
       value: "${RESULTS_DIR_PREFIX}"
     # - name: LLMDBENCH_BASE64_CONTEXT_CONTENTS
     #   value: "DO NOT TRANSFER FOR NOW"
-    - name: LLMDBENCH_RUN_DATASET_DIR
-      value: "DO NOT TRANSFER FOR NOW"
-    - name: LLMDBENCH_RUN_DATASET_URL
-      value: "DO NOT TRANSFER FOR NOW"
+    # - name: LLMDBENCH_RUN_DATASET_DIR
+    #   value: "DO NOT TRANSFER FOR NOW"
+    # - name: LLMDBENCH_RUN_DATASET_URL
+    #   value: "DO NOT TRANSFER FOR NOW"
     - name: LLMDBENCH_HARNESS_STACK_NAME
       value: "${endpoint_stack_name}"  
     # - name: HF_TOKEN_SECRET
