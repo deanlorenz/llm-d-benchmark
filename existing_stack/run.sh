@@ -23,6 +23,7 @@ cd `dirname "$(realpath $0)"` > /dev/null 2>&1
 
 set -euo pipefail
 
+HARNESS_EXECUTABLE=llm-d-benchmark.sh
 
 _script_name=$(echo $0 | rev | cut -d '/' -f 1 | rev)
 _control_dir=$(realpath $(pwd)/) #@TODO check if needed
@@ -187,7 +188,12 @@ create_harness_pod ${_pod_name}
 
 # deploy_harness_config ${LLMDBENCH_DEPLOY_CURRENT_MODEL} ${LLMDBENCH_DEPLOY_CURRENT_MODELID} ${local_results_dir} ${local_analysis_dir} ${_combined_pod_config}
 
-exit 0
+yq '.workload | keys | .[]' "${_config_file}" |
+  while IFS= read -r workload; do
+    announce "ℹ️ Running benchmark with workload ${workload}"
+    $control_kubectl exec -it ${_pod_name} ${HARNESS_EXECUTABLE} --harness=${harness_name} \
+    --workload=${workload}
+  done
 
 
       for treatment in $(ls ${control_work_dir}/workload/profiles/${workload_type}/*.yaml); do

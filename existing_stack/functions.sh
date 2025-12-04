@@ -103,6 +103,8 @@ spec:
       value: "DO NOT TRANSFER FOR NOW"
     - name: LLMDBENCH_RUN_DATASET_URL
       value: "DO NOT TRANSFER FOR NOW"
+    - name: LLMDBENCH_HARNESS_STACK_NAME
+      value: "${endpoint_stack_name}"  
     # - name: HF_TOKEN_SECRET
     #   value: "${endpoint_hf_token_secret}"
     # - name: HUGGING_FACE_HUB_TOKEN
