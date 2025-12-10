@@ -39,7 +39,7 @@ export -f sanitize_pod_name
 
 # Sanitize directory name to conform to filesystem naming conventions
 function sanitize_dir_name {
-  sed -e 's/[^0-9A-Za-z-_][^0-9A-Za-z-_]*/_/g' <<<"$1"
+  sed -e 's/[^0-9A-Za-z_-][^0-9A-Za-z_-]*/_/g' <<<"$1"
 }
 export -f sanitize_dir_name
 
