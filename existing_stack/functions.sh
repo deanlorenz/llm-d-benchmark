@@ -2,6 +2,7 @@ if uname -s | grep -qi darwin; then
   alias sed=gsed  
 fi
 
+# Constants
 HARNESS_POD_LABEL="llmdbench-harness-launcher"
 HARNESS_EXECUTABLE="llm-d-benchmark.sh"
 HARNESS_CPU_NR=16
@@ -9,50 +10,94 @@ HARNESS_CPU_MEM=32Gi
 RESULTS_DIR_PREFIX=/requests
 CONTROL_WAIT_TIMEOUT=180
 
+# Log announcement function
 function announce {
     # 1 - MESSAGE
     # 2 - LOGFILE
 
-    echo
-    echo
-    echo ">>>>>>--------------------"
     local message=$(echo ${1})
-    local logfile=${2:-1}
+    local logfile=${2:-none}
 
-    if [[ ! -z ${logfile} ]]
-    then
-        if [[ ${logfile} == "silent" || ${logfile} -eq 0 ]]
-        then
-            echo -e "==> $(date) - ${0} - $message" >> /dev/null
-        elif [[ ${logfile} -eq 1 ]]
-        then
+    case ${logfile} in
+        none|""|"1")
             echo -e "==> $(date) - ${0} - $message"
-        else
+            ;;
+        silent|"0")
+            ;;
+        *)
             echo -e "==> $(date) - ${0} - $message" >> ${logfile}
-        fi
-    else
-        echo
-        echo -e "==> $(date) - ${0} - $message"
-        echo
-    fi
-    echo "<<<<<<<<--------------------"
+            ;;  
+    esac
 }
 export -f announce
 
-function sanitize {
+# Sanitize pod name to conform to Kubernetes naming conventions
+function sanitize_pod_name {
   sed -e 's/[^0-9A-Za-z-][^0-9A-Za-z-]*/./g' <<<"$1"
 }
+export -f sanitize_pod_name
+
+# Sanitize directory name to conform to filesystem naming conventions
+function sanitize_dir_name {
+  sed -e 's/[^0-9A-Za-z-_][^0-9A-Za-z-_]*/_/g' <<<"$1"
+}
+export -f sanitize_dir_name
+
+# Generate results directory name
+function results_dir_name {
+  local stack_name="$1"
+  local harness_name="$2"
+  local experiment_id="$3"
+  local workload_name="${4:+_$4}"
+
+  sanitize_dir_name "${RESULTS_DIR_PREFIX}/${harness_name}_${experiment_id}${workload_name}_${stack_name}"
+} 
+export -f results_dir_name  
+
+# Retrieve full image name with tag
+function get_image {
+  local image_registry=$1
+  local image_repo=$2
+  local image_name=$3
+  local image_tag=$4
+  local tag_only=${5:-0}
+
+  is_latest_tag=$image_tag
+  if [[ $image_tag == "auto" ]]; then
+    if [[ $LLMDBENCH_CONTROL_CCMD == "podman" ]]; then
+      is_latest_tag=$($LLMDBENCH_CONTROL_CCMD search --list-tags --limit 1000 ${image_registry}/${image_repo}/${image_name} | tail -1 | awk '{ print $2 }' || true)
+    else
+      is_latest_tag=$(skopeo list-tags docker://${image_registry}/${image_repo}/${image_name} | jq -r .Tags[] | tail -1)
+    fi
+    if [[ -z ${is_latest_tag} ]]; then
+      announce "❌ Unable to find latest tag for image \"${image_registry}/${image_repo}/${image_name}\"" >&2
+      exit 1
+    fi
+  fi
+  if [[ $tag_only -eq 1 ]]; then
+    echo ${is_latest_tag}
+  else
+    echo $image_registry/$image_repo/${image_name}:${is_latest_tag}
+  fi
+}
+export -f get_image
+
+# Retrieve list of available harnesses
+function get_harness_list {
+  ls ${LLMDBENCH_MAIN_DIR}/workload/harnesses | $LLMDBENCH_CONTROL_SCMD -e 's^inference-perf^inference_perf^' -e 's^vllm-benchmark^vllm_benchmark^' | cut -d '-' -f 1 | $LLMDBENCH_CONTROL_SCMD -n -e 's^inference_perf^inference-perf^' -e 's^vllm_benchmark^vllm-benchmark^' -e 'H;${x;s/\n/,/g;s/^,//;p;}'
+}
+export -f get_harness_list
 
 function create_harness_pod {
 
-  local _podname=$1
-
-  harness_dataset_file=${harness_dataset_path##*/}
-  harness_dataset_dir=${harness_dataset_path%/$harness_dataset_file}
-  run_experiment_results_dir=${RESULTS_DIR_PREFIX}/"${harness_name}_${_uid}_${endpoint_stack_name}"
+  local pod_name=$1
+  local harness_dataset_file=${harness_dataset_path##*/}
+  local harness_dataset_dir=${harness_dataset_path%/$harness_dataset_file}
+  # run_experiment_results_dir=${RESULTS_DIR_PREFIX}/"${harness_name}_${_uid}_${endpoint_stack_name}"
+  # run_experiment_results_dir=$(results_dir_name "${endpoint_stack_name}" "${harness_name}" "${_uid}")
   experiment_analyzer=$(find ${_root_dir}/analysis/ -name ${harness_name}* | rev | cut -d '/' -f1 | rev)
 
-  ${control_kubectl} --namespace ${harness_namespace} delete pod ${_podname} --ignore-not-found
+  ${control_kubectl} --namespace ${harness_namespace} delete pod ${pod_name} --ignore-not-found
 
 # mkdir -p "${control_work_dir}/setup/yamls"
 
@@ -60,7 +105,7 @@ function create_harness_pod {
 apiVersion: v1
 kind: Pod
 metadata:
-  name: ${_podname}
+  name: ${pod_name}
   namespace: ${harness_namespace}
   labels:
     app: ${HARNESS_POD_LABEL}
@@ -136,15 +181,15 @@ spec:
   restartPolicy: Never    
 EOF
 
-  echo ${control_kubectl} wait --for=condition=Ready=True pod ${_podname} -n ${harness_namespace} --timeout="${CONTROL_WAIT_TIMEOUT}s"
+  echo ${control_kubectl} wait --for=condition=Ready=True pod ${pod_name} -n ${harness_namespace} --timeout="${CONTROL_WAIT_TIMEOUT}s"
 
-  ${control_kubectl} wait --for=condition=Ready=True pod ${_podname} -n ${harness_namespace} --timeout="${CONTROL_WAIT_TIMEOUT}s"
+  ${control_kubectl} wait --for=condition=Ready=True pod ${pod_name} -n ${harness_namespace} --timeout="${CONTROL_WAIT_TIMEOUT}s"
   if [[ $? != 0 ]]; then
-    announce "❌ Timeout waiting for pod ${_podname} to get ready"
+    announce "❌ Timeout waiting for pod ${pod_name} to get ready"
     exit 1
   fi
-  announce "ℹ️ Harness pod ${_podname} started"
-  ${control_kubectl} describe pod ${_podname} -n ${harness_namespace}
+  announce "ℹ️ Harness pod ${pod_name} started"
+  ${control_kubectl} describe pod ${pod_name} -n ${harness_namespace}
 }
 export -f create_harness_pod
 

@@ -14,33 +14,36 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Constants
+HARNESS_EXECUTABLE=llm-d-benchmark.sh
+
+function show_usage {
+  cat <<USAGE
+Usage: ${_script_name} -c <config-file> [options]
+
+  Runs llm-d-benchmark harness against an existing LLM deployment stack.
+
+  Options:
+    -c/--config path to configuration file
+    -v/--verbose print the command being executed, and result
+    -d/--debug execute harness in "debug-mode"
+    -n/--dry-run do not execute commands, just print what would be executed
+    -h/--help show this help
+USAGE
+}
+
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
-  echo "This script should be executed not sourced"
+  echo "This script should be executed not sourced" >&2
+  show_usage
   return 1
 fi
 
-cd `dirname "$(realpath $0)"` > /dev/null 2>&1
-
 set -euo pipefail
-
-HARNESS_EXECUTABLE=llm-d-benchmark.sh
-
-_script_name=$(echo $0 | rev | cut -d '/' -f 1 | rev)
+cd "$(dirname "$(realpath -- $0)")" > /dev/null 2>&1
+_script_name="${0##*/}"
 _control_dir=$(realpath $(pwd)/) #@TODO check if needed
-_root_dir=$(realpath "${_control_dir}/../")
+#_root_dir=$(realpath "${_control_dir}/../")
 source ${_control_dir}/functions.sh
-
-
-function show_usage {
-cat <<EOF
-Usage: ${_script_name}
-  -c/--config path to configuration file
-  -v/--verbose print the command being executed, and result
-  -d/--debug execute harness in "debug-mode"
-  -n/--dry-run do not execute commands, just print what would be executed
-  -h/--help show this help
-EOF
-}
 
 function read_config {
   # $1 - configuration yaml file
@@ -70,12 +73,7 @@ while [[ $# -gt 0 ]]; do
         ;;
         -h|--help)
         show_usage
-        if [[ "${BASH_SOURCE[0]}" == "${0}" ]]
-        then
-            exit 0
-        else
-            return 0
-        fi
+        exit 0
         ;;
         *)
         echo "ERROR: unknown option \"$key\""
@@ -102,7 +100,7 @@ compgen -v
 
 _inference_url="${endpoint_base_url}/v1/chat/completions"
 _model_url="${endpoint_base_url}/v1/models" # @TODO check if needed
-_harness_pod_name=llmdbench-${harness_name}-launcher
+_harness_pod_name=$(sanitize_pod_name "llmdbench-${harness_name}-launcher")  # @TODO if debug use "harness"
 
 announce "ℹ️ Using endpoint_stack_name=$endpoint_stack_name on endpoint_namespace=$endpoint_namespace running model=${endpoint_model} at endpoint_base_url=$endpoint_base_url"
 announce "ℹ️ Using harness_name=$harness_name, with _harness_pod_name=$_harness_pod_name on harness_namespace=$harness_namespace"
@@ -121,8 +119,9 @@ _steps_dir="$_control_dir/steps"
 #python3 ${_steps_dir}/05_ensureharness_namespace_prepared.py 2> ${control_work_dir}/setup/commands/05_ensureharness_namespace_prepare_stderr.log 1> ${control_work_dir}/setup/commands/05_ensureharness_namespace_prepare_stdout.log
 if [[ $? -ne 0 ]]; then
   announce "❌ Error while attempting to setup the harness namespace"
+  echo "---stderr----------------------"
   cat ${control_work_dir}/setup/commands/05_ensureharness_namespace_prepare_stderr.log
-  echo "---------------------------"
+  echo "---stdout----------------------"
   cat ${control_work_dir}/setup/commands/05_ensureharness_namespace_prepare_stdout.log
   exit 1
 fi
@@ -139,36 +138,24 @@ fi
 
 # Verify model is deployed and endpoint is reachable
 # ========================================================
-announce "🔍 Verifying model and endpoint"
-
-httpCode=$($control_kubectl -n $endpoint_namespace run -q --rm -it --image=alpine/curl --restart=Never model-list-${_uid} \
-    -- curl -s -o /dev/null -w "%{http_code}\n" "${endpoint_base_url}/v1/completions" \
+_verbose_curl=""
+# _verbose_curl=" -v "
+# _verbose_curl=" --trace-ascii - "
+_pod_name=$(sanitize_pod_name llmdbench-verify-model-${_uid})
+announce "🔍 Verifying model ${endpoint_model} on endpoint ${endpoint_base_url}/v1/completions using pod $_pod_name"
+$control_kubectl -n $endpoint_namespace run verify_model-${_uid} \
+    -q --rm -i --image=alpine/curl --restart=Never --command -- \
+    curl -sS -m 10 -i --fail-with-body $_verbose_curl "${endpoint_base_url}/v1/completions" \
     -H "Content-Type: application/json" \
     -d '{
         "model": "'${endpoint_model}'",
         "prompt": "Hello"
     }'
-)
-
-# echo "HTTP code:"
-# echo "$httpCode"
-
 
 if [[ $? != 0 ]]; then
-  announce "❌ Error while sending completion request to the model (kubectl failed)"
+  announce "❌ Error while verifying model"
   exit 1
 fi
-
-if [[ "$httpCode" > 300 ]]; then
-  announce "❌ Error while sending completion request to the model(bad HTTP code)"
-  exit 1
-fi
-
-# @TODO return actual error od the test above!!!
-
-# rm -rf ${control_work_dir}/workload/profiles/*
-# mkdir -p ${control_work_dir}/workload/profiles/${harness_name}
-
 
 # Prepare ConfigMap with workload profiles
 # ========================================================
@@ -184,120 +171,37 @@ eval ${cmd[@]}
 announce "ℹ️ ConfigMap '${harness_name}-profiles' created"
 
 
+# Check results PVC
+# ========================================================
 announce "ℹ️ Checking results PVC"
 if ! $control_kubectl --namespace=${harness_namespace} describe pvc ${harness_results_pvc}; then # @TODO Verify status and RWX 
   announce "❌ Error checking PVC ${harness_results_pvc}"
 fi
-  
-_pod_name=$(sanitize llmdbench-${harness_name}-launcher)
-announce "ℹ️ Checking harness pod ${_pod_name}"
+
+# Create harness pod
+# ========================================================  
+_pod_name="${_harness_pod_name}"    # place holder for parallelism support
+announce "ℹ️ Creating harness pod ${_pod_name}"
 create_harness_pod ${_pod_name}
 
-# deploy_harness_config ${LLMDBENCH_DEPLOY_CURRENT_MODEL} ${LLMDBENCH_DEPLOY_CURRENT_MODELID} ${local_results_dir} ${local_analysis_dir} ${_combined_pod_config}
 
+# Execute workloads
+# ========================================================
 yq '.workload | keys | .[]' "${_config_file}" |
   while IFS= read -r workload; do
     announce "ℹ️ Running benchmark with workload ${workload}"
 
-    $control_kubectl exec -i ${_pod_name} -- bash <<EOF
+    $control_kubectl exec -i ${_pod_name} -- bash <<RUN_WORKLOAD
+# redirect to root fds so that kubectl logs can capture output
 exec 1> >(tee /proc/1/fd/1 >&1)
 exec 2> >(tee /proc/1/fd/2 >&2)
 
 export LLMDBENCH_RUN_EXPERIMENT_ID="${_uid}_${workload}"
 
 ${HARNESS_EXECUTABLE} --harness="${harness_name}" --workload="${workload}"
-EOF
+RUN_WORKLOAD
   done
 
-
-#       for treatment in $(ls ${control_work_dir}/workload/profiles/${workload_type}/*.yaml); do
-
-
-#         # Assemble the pod specifications and build the workload
-
-#         for i in $(seq 1 $LLMDBENCH_HARNESS_LOAD_PARALLELISM); do
-#           _pod_name="${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}-${i}-of-${LLMDBENCH_HARNESS_LOAD_PARALLELISM}"
-
-#           export LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX=${harness_name}_${LLMDBENCH_RUN_EXPERIMENT_ID}_${endpoint_stack_name}
-#           export LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR=${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_PREFIX}/${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX}_${i}
-
-#           local_results_dir=${control_work_dir}/results/${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX}
-#           local_analysis_dir=${control_work_dir}/analysis/${LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR_SUFFIX}
-#           llmdbench_execute_cmd "mkdir -p ${local_results_dir}_${i} && mkdir -p ${local_analysis_dir}_${i}" \
-#                 ${$kubectl} \
-#                 ${LLMDBENCH_CONTROL_VERBOSE}
-
-
-#           if [[ -f ${local_analysis_dir}_{i}/summary.txt ]]; then
-#             announce "⏭️  This particular workload profile was already executed against this stack. Please remove \"${local_analysis_dir}_{i}/summary.txt\" to re-execute".
-#             continue
-#           fi
-
-#           if [[ $$kubectl -eq 1 ]]; then
-#             announce "ℹ️ Skipping \"${_pod_name}\" creation"
-#           else
-#             if [[ "$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE" == /* ]]; then
-#               potential_gaie_path=$(echo $LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE'.yaml' | $LLMDBENCH_CONTROL_SCMD 's^.yaml.yaml^.yaml^g')
-#             else
-#               potential_gaie_path=$(echo ${LLMDBENCH_MAIN_DIR}/setup/presets/gaie/$LLMDBENCH_VLLM_MODELSERVICE_GAIE_PLUGINS_CONFIGFILE'.yaml' | $LLMDBENCH_CONTROL_SCMD 's^.yaml.yaml^.yaml^g')
-#             fi
-
-#             if [[ -f $potential_gaie_path ]]; then
-#               export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONFIG=$potential_gaie_path
-#             fi
-
-#             if [[ -f $potential_gaie_path ]]; then
-#               export LLMDBENCH_VLLM_MODELSERVICE_GAIE_PRESETS_CONFIG=$potential_gaie_path
-#             fi
-#             export LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD="^$(echo $LLMDBENCH_HARNESS_ENVVARS_TO_YAML | $LLMDBENCH_CONTROL_SCMD -e 's/,/|^/g' -e 's/$/|^/g')$LLMDBENCH_CONTROL_ENV_VAR_LIST_TO_POD"
-#             create_harness_pod ${_pod_name}
-#           fi
-#         done
-
-#         _combined_pod_config="${control_work_dir}/setup/yamls/${harness_name}_${LLMDBENCH_RUN_EXPERIMENT_ID}_${endpoint_stack_name}.yaml"
-#         rm -rf ${_combined_pod_config}
-#         touch ${_combined_pod_config}
-#         for i in $(seq 1 "$LLMDBENCH_HARNESS_LOAD_PARALLELISM"); do
-#             _pod_name="${LLMDBENCH_RUN_HARNESS_LAUNCHER_NAME}-${i}-of-${LLMDBENCH_HARNESS_LOAD_PARALLELISM}"
-#             _yaml_path="${control_work_dir}/${_pod_name}/setup/yamls/pod_benchmark-launcher.yaml"
-
-#             if [[ ! -f "$_combined_pod_config" ]]; then
-#                 announce  "⚠️  WARNING: YAML not found: $_yaml_path" >&2
-#                 continue
-#             fi
-
-#             echo "---" >> "$_combined_pod_config"
-#             cat "$_yaml_path" >> "$_combined_pod_config"
-#             echo >> "$_combined_pod_config"
-#         done
-
-#         deploy_harness_config ${LLMDBENCH_DEPLOY_CURRENT_MODEL} ${LLMDBENCH_DEPLOY_CURRENT_MODELID} ${local_results_dir} ${local_analysis_dir} ${_combined_pod_config}
-
-#         if [[ $LLMDBENCH_HARNESS_DEBUG -eq 1 ]]; then
-#           exit 0
-#         fi
-#       done
-
-#     if [[ $LLMDBENCH_RUN_EXPERIMENT_ANALYZE_LOCALLY -eq 1 ]]; then
-#       announce "🔍 Analyzing collected data..."
-#       conda_root="$(conda info --all --json | jq -r '.root_prefix'  2>/dev/null)"
-#       if [ "$LLMDBENCH_CONTROL_DEPLOY_HOST_OS" = "mac" ]; then
-#         conda_sh="${conda_root}/base/etc/profile.d/conda.sh"
-#       else
-#         conda_sh="${conda_root}/etc/profile.d/conda.sh"
-#       fi
-#       if [ -f "${conda_sh}" ]; then
-#         llmdbench_execute_cmd "source \"${conda_sh}\"" ${$kubectl} ${LLMDBENCH_CONTROL_VERBOSE}
-#       else
-#         announce "❌ Could not find conda.sh for $LLMDBENCH_CONTROL_DEPLOY_HOST_OS. Please verify your Anaconda installation."
-#         exit 1
-#       fi
-
-#       llmdbench_execute_cmd "conda activate \"$LLMDBENCH_HARNESS_CONDA_ENV_NAME\"" ${$kubectl} ${LLMDBENCH_CONTROL_VERBOSE}
-#       llmdbench_execute_cmd "${LLMDBENCH_CONTROL_PCMD} $LLMDBENCH_MAIN_DIR/analysis/analyze_results.py" ${$kubectl} ${LLMDBENCH_CONTROL_VERBOSE}
-#       announce "✅ Data analysis done."
-#     fi
-#     unset LLMDBENCH_DEPLOY_CURRENT_MODEL
-
-#   done
-# done
+# @TODO Collect results
+# @TODO Clean up harness pod
+# @TODO handle parallelism
