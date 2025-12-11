@@ -34,7 +34,9 @@ export LLMDBENCH_STEPS_DIR="$LLMDBENCH_CONTROL_DIR/steps"
 export LLMDBENCH_MAIN_DIR=$(realpath ${LLMDBENCH_CONTROL_DIR}/../)
 
 source ${LLMDBENCH_CONTROL_DIR}/env.sh
-source ${LLMDBENCH_EXISTING_STACK_DIR}/functions.sh # override functions.sh from setup dir
+function sanitize_dir_name {
+-  sed -e 's/[^0-9A-Za-z_-][^0-9A-Za-z_-]*/_/g' <<<"$1"
+-}
 
 export LLMDBENCH_CONTROL_VERBOSE=${LLMDBENCH_CONTROL_VERBOSE:-0}
 export LLMDBENCH_DEPLOY_SCENARIO=
