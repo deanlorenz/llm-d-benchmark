@@ -48,6 +48,12 @@ source ${_control_dir}/functions.sh
 function read_config {
   # $1 - configuration yaml file
   eval $( yq -o shell '. | del(.workload)| del (.env)' "$1")
+
+  if [[ "$harness_parallelism" != "1" ]]; then
+      echo "ERROR: harness_parallelism is set to '$harness_parallelism'. Only parallelism=1 is supported." >&2
+      exit 1
+  fi  
+  #@TODO harness_parallelism=1 only is supported for now!!!
 }
 
 while [[ $# -gt 0 ]]; do
