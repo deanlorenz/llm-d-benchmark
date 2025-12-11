@@ -71,7 +71,7 @@ function start_harness_pod {
 
   ${control_kubectl} --namespace ${harness_namespace} delete pod ${pod_name} --ignore-not-found
 
-  cat <<EOF | ${control_kubectl} apply -f -
+  cat <<EOF | yq '.spec.containers[0].env = load("'${_config_file}'").env + .spec.containers[0].env' | ${control_kubectl} apply -f -
 apiVersion: v1
 kind: Pod
 metadata:
@@ -99,8 +99,8 @@ spec:
     env:
     # - name: LLMDBENCH_RUN_EXPERIMENT_RESULTS_DIR
     #   value: "NOT USING AUTO"
-    - name: RAYON_NUM_THREADS
-      value: "4"
+    # - name: RAYON_NUM_THREADS
+    #   value: "4"
     - name: LLMDBENCH_RUN_WORKSPACE_DIR
       value: "/workspace"
     # - name: LLMDBENCH_RUN_EXPERIMENT_HARNESS_WORKLOAD_NAME
