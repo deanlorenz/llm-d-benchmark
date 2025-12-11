@@ -166,4 +166,3 @@ EOF
   announce "ℹ️ Harness pod ${pod_name} started"
   ${control_kubectl} describe pod ${pod_name} -n ${harness_namespace}
 }
-#export -f start_harness_pod
