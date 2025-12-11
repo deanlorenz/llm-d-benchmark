@@ -1,0 +1,215 @@
+#!/usr/bin/env bash
+
+# Copyright 2025 The llm-d Authors.
+
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+
+# http://www.apache.org/licenses/LICENSE-2.0
+
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Constants
+HARNESS_EXECUTABLE=llm-d-benchmark.sh
+
+function show_usage {
+  cat <<USAGE
+Usage: ${_script_name} -c <config-file> [options]
+
+  Runs llm-d-benchmark harness against an existing LLM deployment stack.
+
+  Options:
+    -c/--config path to configuration file
+    -v/--verbose print the command being executed, and result
+    -d/--debug execute harness in "debug-mode"
+    -n/--dry-run do not execute commands, just print what would be executed
+    -h/--help show this help
+USAGE
+}
+
+if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
+  echo "This script should be executed not sourced" >&2
+  show_usage
+  return 1
+fi
+
+set -euo pipefail
+cd "$(dirname "$(realpath -- $0)")" > /dev/null 2>&1
+_script_name="${0##*/}"
+_control_dir=$(realpath $(pwd)/) #@TODO check if needed
+_root_dir=$(realpath "${_control_dir}/../")
+source ${_control_dir}/functions.sh
+
+function read_config {
+  # $1 - configuration yaml file
+  # $2 - uid of the experiment
+  eval $( yq -o shell '.harness.experiment_prefix |= (explode(.) | join("_") + "$2") | del(.workload)' "$1")
+}
+
+while [[ $# -gt 0 ]]; do
+    key="$1"
+
+    case $key in
+        -c=*|--config=*)
+        _config_file=$(echo $key | cut -d '=' -f 2)
+        ;;
+        -c|--config)
+        _config_file="$2"
+        shift
+        ;;
+        -n|--dry-run)
+        export $kubectl=1
+        ;;
+        -d|--debug)
+        export LLMDBENCH_HARNESS_DEBUG=1
+        ;;
+        -v|--verbose)
+        export LLMDBENCH_VERBOSE=1
+        ;;
+        -h|--help)
+        show_usage
+        exit 0
+        ;;
+        *)
+        echo "ERROR: unknown option \"$key\""
+        show_usage
+        exit 1
+        ;;
+        esac
+        shift
+done
+
+#source ${_control_dir}/env.sh #@TODO WE NEED THIS????
+
+# Read configuration file
+# ========================================================
+announce "📄 Reading configuration file $_config_file"
+if ! [[ -f $_config_file  ]]; then
+  echo "❌ ERROR: could not find config file \"$_config_file\""
+  exit 1
+fi
+
+_uid=$(date +%s)  # @TODO consider calling this _experiment_uid
+read_config "$_config_file" "${_uid}"
+compgen -v
+
+_inference_url="${endpoint_base_url}/v1/chat/completions"
+_model_url="${endpoint_base_url}/v1/models" # @TODO check if needed
+_harness_pod_name=$(sanitize_pod_name "llmdbench-${harness_name}-launcher")  # @TODO if debug use "harness"
+
+announce "ℹ️ Using endpoint_stack_name=$endpoint_stack_name on endpoint_namespace=$endpoint_namespace running model=${endpoint_model} at endpoint_base_url=$endpoint_base_url"
+announce "ℹ️ Using harness_name=$harness_name, with _harness_pod_name=$_harness_pod_name on harness_namespace=$harness_namespace"
+#@TODO fix experiment_prefix
+announce "ℹ️ Using experiment prefix ${harness_experiment_prefix}_<workload_key>_"
+
+
+mkdir -p ${control_work_dir}/setup/commands #@TODO do we need this?
+
+
+# Ensure harness namespace is prepared @TODO enable python script
+# ========================================================
+announce "🔧 Ensuring harness namespace is prepared"
+_control_dir=$(realpath $(pwd)/) #@TODO check if needed
+_steps_dir="$_control_dir/steps"
+#python3 ${_steps_dir}/05_ensureharness_namespace_prepared.py 2> ${control_work_dir}/setup/commands/05_ensureharness_namespace_prepare_stderr.log 1> ${control_work_dir}/setup/commands/05_ensureharness_namespace_prepare_stdout.log
+if [[ $? -ne 0 ]]; then
+  announce "❌ Error while attempting to setup the harness namespace"
+  echo "---stderr----------------------"
+  cat ${control_work_dir}/setup/commands/05_ensureharness_namespace_prepare_stderr.log
+  echo "---stdout----------------------"
+  cat ${control_work_dir}/setup/commands/05_ensureharness_namespace_prepare_stdout.log
+  exit 1
+fi
+
+# Verify HF token secret exists
+# ========================================================
+announce "🔧 Verifying HF token secret ${endpoint_hf_token_secret} in namespace ${endpoint_namespace}"
+if $control_kubectl --namespace "$endpoint_namespace" get secret "$endpoint_hf_token_secret" 2>&1 > /dev/null; then 
+  announce "ℹ️ Using HF token secret $endpoint_hf_token_secret"
+else    
+  announce "❌ ERROR: could not fetch HF token secret $endpoint_hf_token_secret"
+  exit 1
+fi
+
+# Verify model is deployed and endpoint is reachable
+# ========================================================
+_verbose_curl=""
+# _verbose_curl=" -v "
+# _verbose_curl=" --trace-ascii - "
+_pod_name=$(sanitize_pod_name llmdbench-verify-model-${_uid})
+announce "🔍 Verifying model ${endpoint_model} on endpoint ${endpoint_base_url}/v1/completions using pod $_pod_name"
+
+_verify_model_pod_name=$(sanitize_pod_name "verify-model-${_uid}")
+
+$control_kubectl -n $endpoint_namespace run ${_verify_model_pod_name} \
+    -q --rm -i --image=alpine/curl --restart=Never --command -- \
+    curl -sS -m 10 -i --fail-with-body $_verbose_curl "${endpoint_base_url}/v1/completions" \
+    -H "Content-Type: application/json" \
+    -d '{
+        "model": "'${endpoint_model}'",
+        "prompt": "Hello"
+    }'
+
+if [[ $? != 0 ]]; then
+  announce "❌ Error while verifying model"
+  exit 1
+fi
+
+# Prepare ConfigMap with workload profiles
+# ========================================================
+announce "🔧 Preparing ConfigMap with workload profiles"
+$control_kubectl --namespace "${harness_namespace}" delete configmap ${harness_name}-profiles --ignore-not-found
+
+cmd=($control_kubectl create cm ${harness_name}-profiles)
+cmd+=(--namespace "${harness_namespace}")
+for key in $(yq '.workload | keys | .[]' $_config_file); do
+  cmd+=( --from-file=${key}.yaml='<(yq ".workload.'$key' | explode(.)" '$_config_file')')
+done
+eval ${cmd[@]}
+announce "ℹ️ ConfigMap '${harness_name}-profiles' created"
+
+
+# Check results PVC
+# ========================================================
+announce "ℹ️ Checking results PVC"
+if ! $control_kubectl --namespace=${harness_namespace} describe pvc ${harness_results_pvc}; then # @TODO Verify status and RWX 
+  announce "❌ Error checking PVC ${harness_results_pvc}"
+fi
+
+# Create harness pod
+# ========================================================  
+_pod_name="${_harness_pod_name}"    # place holder for parallelism support
+announce "ℹ️ Creating harness pod ${_pod_name}"
+start_harness_pod ${_pod_name}
+
+
+# Execute workloads
+# ========================================================
+#
+# @TODO Allow user to follow experiment progress in real time, but also allow client disconnect.
+# k8s logs do not provide the same experience
+# We do not want to delete harness pod between iterations
+#
+yq '.workload | keys | .[]' "${_config_file}" |
+  while IFS= read -r workload; do
+    announce "ℹ️ Running benchmark with workload ${workload}"
+
+    $control_kubectl exec -i ${_pod_name} -- bash <<RUN_WORKLOAD
+# redirect to root fds so that kubectl logs can capture output
+exec 1> >(tee /proc/1/fd/1 >&1)
+exec 2> >(tee /proc/1/fd/2 >&2)
+
+export LLMDBENCH_RUN_EXPERIMENT_ID="${_uid}_${workload}"
+
+${HARNESS_EXECUTABLE} --harness="${harness_name}" --workload="${workload}"
+RUN_WORKLOAD
+  done
+
+# @TODO Collect results
+# @TODO Clean up harness pod
+# @TODO handle parallelism
