@@ -42,7 +42,7 @@ set -euo pipefail
 cd "$(dirname "$(realpath -- $0)")" > /dev/null 2>&1
 _script_name="${0##*/}"
 _control_dir=$(realpath $(pwd)/) #@TODO check if needed
-#_root_dir=$(realpath "${_control_dir}/../")
+_root_dir=$(realpath "${_control_dir}/../")
 source ${_control_dir}/functions.sh
 
 function read_config {
@@ -143,7 +143,10 @@ _verbose_curl=""
 # _verbose_curl=" --trace-ascii - "
 _pod_name=$(sanitize_pod_name llmdbench-verify-model-${_uid})
 announce "🔍 Verifying model ${endpoint_model} on endpoint ${endpoint_base_url}/v1/completions using pod $_pod_name"
-$control_kubectl -n $endpoint_namespace run verify_model-${_uid} \
+
+_verify_model_pod_name=$(sanitize_pod_name "verify-model-${_uid}")
+
+$control_kubectl -n $endpoint_namespace run ${_verify_model_pod_name} \
     -q --rm -i --image=alpine/curl --restart=Never --command -- \
     curl -sS -m 10 -i --fail-with-body $_verbose_curl "${endpoint_base_url}/v1/completions" \
     -H "Content-Type: application/json" \
@@ -182,11 +185,16 @@ fi
 # ========================================================  
 _pod_name="${_harness_pod_name}"    # place holder for parallelism support
 announce "ℹ️ Creating harness pod ${_pod_name}"
-create_harness_pod ${_pod_name}
+start_harness_pod ${_pod_name}
 
 
 # Execute workloads
 # ========================================================
+#
+# @TODO Allow user to follow experiment progress in real time, but also allow client disconnect.
+# k8s logs do not provide the same experience
+# We do not want to delete harness pod between iterations
+#
 yq '.workload | keys | .[]' "${_config_file}" |
   while IFS= read -r workload; do
     announce "ℹ️ Running benchmark with workload ${workload}"
