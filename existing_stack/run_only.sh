@@ -16,6 +16,7 @@
 
 # Constants
 HARNESS_EXECUTABLE=llm-d-benchmark.sh
+VERIFY_MODEL_TIMEOUT=10
 
 function show_usage {
   cat <<USAGE
@@ -151,7 +152,7 @@ _verify_model_pod_name=$(sanitize_pod_name "verify-model-${_uid}")
 
 $control_kubectl -n $endpoint_namespace run ${_verify_model_pod_name} \
     -q --rm -i --image=alpine/curl --restart=Never --command -- \
-    curl -sS -m 10 -i --fail-with-body $_verbose_curl "${endpoint_base_url}/v1/completions" \
+    curl -sS -m $VERIFY_MODEL_TIMEOUT -i --fail-with-body $_verbose_curl "${endpoint_base_url}/v1/completions" \
     -H "Content-Type: application/json" \
     -d '{
         "model": "'${endpoint_model}'",
