@@ -66,13 +66,10 @@ function start_harness_pod {
   local pod_name=$1
   local harness_dataset_file=${harness_dataset_path##*/}
   local harness_dataset_dir=${harness_dataset_path%/$harness_dataset_file}
-  # run_experiment_results_dir=${RESULTS_DIR_PREFIX}/"${harness_name}_${_uid}_${endpoint_stack_name}"
   # run_experiment_results_dir=$(results_dir_name "${endpoint_stack_name}" "${harness_name}" "${_uid}")
   experiment_analyzer=$(find ${_root_dir}/analysis/ -name ${harness_name}* | rev | cut -d '/' -f1 | rev)
 
   ${control_kubectl} --namespace ${harness_namespace} delete pod ${pod_name} --ignore-not-found
-
-# mkdir -p "${control_work_dir}/setup/yamls"
 
   cat <<EOF | ${control_kubectl} apply -f -
 apiVersion: v1

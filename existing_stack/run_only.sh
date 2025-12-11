@@ -47,8 +47,7 @@ source ${_control_dir}/functions.sh
 
 function read_config {
   # $1 - configuration yaml file
-  # $2 - uid of the experiment
-  eval $( yq -o shell '.harness.experiment_prefix |= (explode(.) | join("_") + "$2") | del(.workload)' "$1")
+  eval $( yq -o shell '. | del(.workload)| del (.env)' "$1")
 }
 
 while [[ $# -gt 0 ]]; do
@@ -95,7 +94,7 @@ if ! [[ -f $_config_file  ]]; then
 fi
 
 _uid=$(date +%s)  # @TODO consider calling this _experiment_uid
-read_config "$_config_file" "${_uid}"
+read_config "$_config_file"
 compgen -v
 
 _inference_url="${endpoint_base_url}/v1/chat/completions"
@@ -104,8 +103,6 @@ _harness_pod_name=$(sanitize_pod_name "llmdbench-${harness_name}-launcher")  # @
 
 announce "ℹ️ Using endpoint_stack_name=$endpoint_stack_name on endpoint_namespace=$endpoint_namespace running model=${endpoint_model} at endpoint_base_url=$endpoint_base_url"
 announce "ℹ️ Using harness_name=$harness_name, with _harness_pod_name=$_harness_pod_name on harness_namespace=$harness_namespace"
-#@TODO fix experiment_prefix
-announce "ℹ️ Using experiment prefix ${harness_experiment_prefix}_<workload_key>_"
 
 
 mkdir -p ${control_work_dir}/setup/commands #@TODO do we need this?
