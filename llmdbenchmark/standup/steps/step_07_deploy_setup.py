@@ -20,6 +20,14 @@ class DeploySetupStep(Step):
         "13_ms-values": "ms-values.yaml",
     }
 
+    # Representative cluster-scoped CRD per gateway provider. Its presence
+    # means the provider's control plane is already installed cluster-wide,
+    # so the gateway-provider helmfile apply can be safely skipped (see
+    # _gateway_provider_present / the SHARED-CLUSTER SAFETY note in execute).
+    _PROVIDER_PROBE_CRDS = {
+        "istio": "gateways.networking.istio.io",
+    }
+
     def __init__(self):
         super().__init__(
             number=7,
@@ -31,6 +39,25 @@ class DeploySetupStep(Step):
 
     def should_skip(self, context: ExecutionContext) -> bool:
         return "modelservice" not in context.deployed_methods
+
+    def _gateway_provider_present(
+        self, cmd, context: ExecutionContext, gateway_class: str
+    ) -> bool:
+        """Return True if the gateway provider's CRDs are already registered.
+
+        Used by the SHARED-CLUSTER SAFETY guard in execute() to skip
+        re-applying the cluster-scoped gateway-provider helmfile onto an
+        already-installed control plane. Returns False in dry-run, for
+        unknown providers, or when the probe CRD is absent, preserving the
+        original apply behavior in those cases.
+        """
+        if context.dry_run:
+            return False
+        probe = self._PROVIDER_PROBE_CRDS.get(gateway_class)
+        if probe is None:
+            return False
+        result = cmd.kube("get", "crd", probe, "--ignore-not-found", "-o", "name")
+        return result.success and bool(result.stdout.strip())
 
     def execute(
         self, context: ExecutionContext, stack_path: Path | None = None
@@ -62,20 +89,35 @@ class DeploySetupStep(Step):
         # This ensures helmfile resolves release namespaces (istio-system)
         # from the helmfile itself, not from the kubeconfig context namespace
         # which may be set to the benchmark namespace (e.g., llmdbenchcicd).
+        #
+        # SHARED-CLUSTER SAFETY (fork patch): the gateway-provider helmfile
+        # installs istio-base + istiod into the cluster-scoped `istio-system`
+        # namespace. On a shared cluster the provider is typically already
+        # present (verified on pokprod: istiod Running, `istio` gatewayclass
+        # Accepted) and re-applying would upgrade/adopt the shared control
+        # plane. Mirror step_02's gateway-provider handling: skip the apply
+        # when the provider's CRDs are already registered; if they are
+        # missing, install exactly as before.
         gw_helmfile = self._find_yaml(stack_path, "09_helmfile-gateway-provider")
         if gw_helmfile and self._has_yaml_content(gw_helmfile):
-            result = cmd.helmfile(
-                "apply",
-                "-f",
-                str(gw_helmfile),
-                "--skip-diff-on-install",
-                "--skip-schema-validation",
-                use_kubeconfig=False,
-            )
-            if not result.success:
-                errors.append(
-                    f"Failed to install Istio via helmfile: {result.stderr}"
+            if self._gateway_provider_present(cmd, context, gateway_class):
+                context.logger.log_info(
+                    f"    | gateway provider '{gateway_class}' already present "
+                    f"-- reusing it (skipping cluster-scoped helmfile apply)"
                 )
+            else:
+                result = cmd.helmfile(
+                    "apply",
+                    "-f",
+                    str(gw_helmfile),
+                    "--skip-diff-on-install",
+                    "--skip-schema-validation",
+                    use_kubeconfig=False,
+                )
+                if not result.success:
+                    errors.append(
+                        f"Failed to install Istio via helmfile: {result.stderr}"
+                    )
 
         # Helmfile is copied to helm working dir so relative value paths resolve
         main_helmfile = self._find_yaml(stack_path, "10_helmfile-main")

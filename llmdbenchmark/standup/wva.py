@@ -328,11 +328,23 @@ def install_prometheus_adapter(  # pylint: disable=too-many-arguments
 
     rbac_yaml = _find_yaml(stack_path, "22_prometheus-rbac")
     if rbac_yaml and _has_yaml_content(rbac_yaml):
-        result = cmd.kube("apply", "-f", str(rbac_yaml), check=False)
-        if not result.success:
-            context.logger.log_warning(
-                f"ClusterRole creation failed (non-fatal): {result.stderr}"
+        # SHARED-CLUSTER SAFETY (fork patch): 22_prometheus-rbac creates a
+        # cluster-scoped ClusterRole granting access to the thanos-querier
+        # API. On a shared cluster this ClusterRole typically already exists
+        # (verified on pokprod: allow-thanos-querier-api-access, not
+        # helm-owned) and re-applying would overwrite its rules. Skip the
+        # apply when every ClusterRole it declares is already registered.
+        if _cluster_roles_present(cmd, context, rbac_yaml):
+            context.logger.log_info(
+                "thanos-querier ClusterRole(s) already present -- reusing "
+                "(skipping cluster-scoped RBAC apply)"
             )
+        else:
+            result = cmd.kube("apply", "-f", str(rbac_yaml), check=False)
+            if not result.success:
+                context.logger.log_warning(
+                    f"ClusterRole creation failed (non-fatal): {result.stderr}"
+                )
     else:
         context.logger.log_warning(
             "prometheus RBAC template (22_prometheus-rbac) not found"
@@ -419,6 +431,38 @@ def _find_existing_prometheus_adapter_release(
     release_name = release_name or None
     release_ns = release_ns or None
     return release_name, release_ns
+
+
+def _cluster_roles_present(
+    cmd: CommandExecutor, context: ExecutionContext, rbac_yaml: Path
+) -> bool:
+    """Return True if every ClusterRole declared in *rbac_yaml* already exists.
+
+    Their presence means the cluster-scoped RBAC was provisioned earlier (or by
+    an admin); re-applying would overwrite it, so callers skip the apply.
+    Returns False in dry-run, or if no ClusterRole names can be determined,
+    preserving the original apply behavior in those cases.
+    """
+    if context.dry_run:
+        return False
+    names: list[str] = []
+    try:
+        for doc in yaml.safe_load_all(rbac_yaml.read_text(encoding="utf-8")):
+            if isinstance(doc, dict) and doc.get("kind") == "ClusterRole":
+                name = (doc.get("metadata") or {}).get("name")
+                if name:
+                    names.append(name)
+    except (OSError, yaml.YAMLError):
+        return False
+    if not names:
+        return False
+    for name in names:
+        result = cmd.kube(
+            "get", "clusterrole", name, "--ignore-not-found", "-o", "name"
+        )
+        if not (result.success and result.stdout.strip()):
+            return False
+    return True
 
 
 def _find_yaml(stack_path: Path, stem_prefix: str) -> Path | None:
