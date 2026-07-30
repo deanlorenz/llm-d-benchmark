@@ -463,28 +463,67 @@ class WorkloadMonitoringStep(Step):
             if "ERROR:" in diag:
                 errors.append(diag)
 
+    def _uwm_enabled(
+        self, cmd: CommandExecutor, context: ExecutionContext
+    ) -> bool:
+        """Return True if OpenShift user-workload-monitoring is already enabled.
+
+        The `openshift-user-workload-monitoring` namespace is created only once
+        UWM has been enabled cluster-wide, so its presence is a reliable proxy
+        that lets the caller avoid overwriting the shared
+        cluster-monitoring-config. Returns False in dry-run, preserving the
+        original apply behavior.
+        """
+        if context.dry_run:
+            return False
+        result = cmd.kube(
+            "get",
+            "namespace",
+            "openshift-user-workload-monitoring",
+            "--ignore-not-found",
+            "-o",
+            "name",
+        )
+        return result.success and bool(result.stdout.strip())
+
     def _apply_monitoring(
         self, cmd: CommandExecutor, context: ExecutionContext, errors: list
     ) -> None:
         """Apply monitoring configuration on OpenShift modelservice clusters."""
-        monitoring_yaml = self._find_rendered_yaml(
-            context, "03_cluster-monitoring-config"
-        )
-
-        if not monitoring_yaml:
-            errors.append(
-                "Monitoring configuration template "
-                "'03_cluster-monitoring-config' not found in rendered plan. "
-                "The plan phase should have rendered this file for "
-                "modelservice deployments on OpenShift."
+        # SHARED-CLUSTER SAFETY (fork patch): '03_cluster-monitoring-config'
+        # is the cluster-scoped `cluster-monitoring-config` ConfigMap in
+        # openshift-monitoring. `oc apply` replaces its data.config.yaml
+        # wholesale, which would drop any other cluster-monitoring settings an
+        # admin has configured. On a shared cluster UWM is typically already
+        # enabled (verified on pokprod). Skip the apply when UWM is already on
+        # (the openshift-user-workload-monitoring namespace exists only once
+        # UWM is enabled); still run the WVA install afterward.
+        if self._uwm_enabled(cmd, context):
+            context.logger.log_info(
+                "User workload monitoring already enabled -- reusing "
+                "(skipping cluster-monitoring-config apply)"
             )
-            return
+        else:
+            monitoring_yaml = self._find_rendered_yaml(
+                context, "03_cluster-monitoring-config"
+            )
 
-        result = cmd.kube("apply", "-f", str(monitoring_yaml))
-        if not result.success:
-            errors.append(f"Failed to apply monitoring configuration: {result.stderr}")
-            return
-        context.logger.log_info("User workload monitoring configured")
+            if not monitoring_yaml:
+                errors.append(
+                    "Monitoring configuration template "
+                    "'03_cluster-monitoring-config' not found in rendered plan. "
+                    "The plan phase should have rendered this file for "
+                    "modelservice deployments on OpenShift."
+                )
+                return
+
+            result = cmd.kube("apply", "-f", str(monitoring_yaml))
+            if not result.success:
+                errors.append(
+                    f"Failed to apply monitoring configuration: {result.stderr}"
+                )
+                return
+            context.logger.log_info("User workload monitoring configured")
 
         # WVA admin install MUST run after the ClusterMonitoringConfig is
         # applied above — the prometheus-adapter is installed into the
