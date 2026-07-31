@@ -1,0 +1,73 @@
+# ta_calibration_probe.yaml.in
+#
+# Sweeps request rate from near-idle to above-saturating at a FIXED token shape
+# (~4096 in / ~1024 out), so the ThroughputAnalyzer (which needs >=10 samples
+# with KSpread>=0.30 to leave its T2-default fallback) gets a chance to calibrate
+# and show a signal. GLOBAL_OPT_INTERVAL=60s => the 8-stage / ~12-min sweep yields
+# ~12 reconcile samples across a wide k range.
+#
+# This is the SIMPLER "does TA do anything at all" bar (reason flips off
+# T2-default, RequiredCapacity goes nonzero) -- it intentionally does NOT try to
+# stay under saturation's k_sat=0.85 threshold. The fuller "does TA LEAD
+# saturation" experiment (staying sub-0.85 during calibration) is tracked
+# separately in session/handoffs/plan__ta-sat-scaleup-lead-setup.md.
+#
+# Schema matches the verified native random profile sanity_random.yaml.in
+# (std_dev + total_count; tokenizer keyed to ..._CURRENT_MODEL).
+#
+# NOTE (flagged by planner, verify empirically): total_count=2000 is a prompt-POOL
+# size, not a request cap -- the 8 stages sum to ~7,100 requests, so prompts will
+# be reused/cycled. That is expected for inference-perf's random generator and is
+# fine for a calibration probe. Watch for per-request errors partway through a
+# stage; if they appear, raise total_count.
+load:
+  type: constant
+  stages:
+  - rate: 2
+    duration: 90
+  - rate: 4
+    duration: 90
+  - rate: 6
+    duration: 90
+  - rate: 8
+    duration: 90
+  - rate: 10
+    duration: 90
+  - rate: 13
+    duration: 90
+  - rate: 16
+    duration: 90
+  - rate: 20
+    duration: 90
+api:
+  type: completion
+  streaming: true
+server:
+  type: vllm
+  model_name: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
+  base_url: REPLACE_ENV_LLMDBENCH_HARNESS_STACK_ENDPOINT_URL
+  ignore_eos: true
+tokenizer:
+  pretrained_model_name_or_path: REPLACE_ENV_LLMDBENCH_DEPLOY_CURRENT_MODEL
+data:
+  type: random
+  input_distribution:
+    min: 4000
+    max: 4200
+    mean: 4096
+    std_dev: 50
+    total_count: 2000
+  output_distribution:
+    min: 950
+    max: 1100
+    mean: 1024
+    std_dev: 30
+    total_count: 2000
+report:
+  request_lifecycle:
+    summary: true
+    per_stage: true
+    per_request: true
+storage:
+  local_storage:
+    path: /workspace
