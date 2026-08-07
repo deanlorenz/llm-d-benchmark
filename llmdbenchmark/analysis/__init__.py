@@ -116,6 +116,23 @@ def run_analysis(
             if err:
                 errors.append(err)
 
+    # --- 1b. Correct inference-perf output-token metrics ---
+    # inference-perf derives output_len by re-tokenizing generated text, which
+    # inflates it (and every output-token-derived metric) with random data +
+    # ignore_eos. Rescale the just-written v0.2 reports using the exact
+    # server-reported completion_tokens. Never fail analysis on a correction error.
+    if harness_name == "inference-perf":
+        try:
+            from llmdbenchmark.analysis.output_token_correction import (
+                correct_inference_perf_output_tokens,
+            )
+
+            corr_err = correct_inference_perf_output_tokens(results_dir, context)
+            if corr_err:
+                _log(context, f"Output-token correction: {corr_err}")
+        except Exception as exc:  # pragma: no cover - defensive
+            _log(context, f"Output-token correction skipped: {exc}")
+
     # --- 2. Extract summary from stdout.log ---
     marker = _SUMMARY_MARKERS.get(harness_name)
     if marker:
